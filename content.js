@@ -345,7 +345,12 @@
 
 
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+    const isHighlight = e.altKey && e.key === 'h';
+    const isUnderline = e.altKey && e.key === 'u';
+    const isHighlightFallback = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'H';
+    const isUnderlineFallback = (e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'U';
+
+    if (isHighlight || isHighlightFallback) {
       e.preventDefault();
       chrome.runtime.sendMessage({ action: 'getDefaults' }, (response) => {
         if (response) {
@@ -354,7 +359,7 @@
       });
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key === 'u') {
+    if (isUnderline || isUnderlineFallback) {
       e.preventDefault();
       chrome.runtime.sendMessage({ action: 'getDefaults' }, (response) => {
         if (response) {

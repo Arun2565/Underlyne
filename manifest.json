@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Substack Highlighter",
+  "name": "Underlyne",
   "version": "1.0.0",
   "description": "Highlight and underline text on Substack articles. Persists across page reloads.",
   "permissions": [
@@ -13,22 +13,22 @@
   "commands": {
     "highlight-selection": {
       "suggested_key": {
-        "default": "Ctrl+H",
-        "mac": "Command+H"
+        "default": "Ctrl+Shift+H",
+        "mac": "Command+Shift+H"
       },
       "description": "Highlight selected text"
     },
     "underline-selection": {
       "suggested_key": {
-        "default": "Ctrl+U",
-        "mac": "Command+U"
+        "default": "Ctrl+Shift+U",
+        "mac": "Command+Shift+U"
       },
       "description": "Underline selected text"
     }
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Substack Highlighter",
+    "default_title": "Underlyne",
     "default_icon": {
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
