@@ -1,4 +1,4 @@
-# Substack Highlighter
+# Underlyne
 
 A Chrome extension to highlight and underline text on Substack articles. Highlights persist across page reloads and browser sessions.
 
@@ -33,7 +33,7 @@ Change default colors from the extension popup.
 ## Project Structure
 
 ```
-substack-highlighter/
+Underlyne/
 ├── manifest.json         # Extension config (Manifest V3)
 ├── background.js         # Service worker — storage, message routing
 ├── content.js            # Injected script — selection, XPath, restoration
