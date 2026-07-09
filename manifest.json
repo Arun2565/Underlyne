@@ -8,7 +8,7 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://*.substack.com/p/*"
+    "https://*.substack.com/*"
   ],
   "commands": {
     "highlight-selection": {
@@ -24,6 +24,13 @@
         "mac": "Command+Shift+U"
       },
       "description": "Underline selected text"
+    },
+    "reload-extension": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+9",
+        "mac": "Command+Shift+9"
+      },
+      "description": "Reload extension and refresh active page"
     }
   },
   "action": {
@@ -40,7 +47,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.substack.com/p/*"],
+      "matches": ["https://*.substack.com/*"],
       "js": ["content.js"],
       "css": ["contentStyles.css"],
       "run_at": "document_idle"

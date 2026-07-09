@@ -1,5 +1,15 @@
 (() => {
+  console.log('[Underlyne] Content script loaded');
   const COLORS = ['yellow', 'green', 'blue', 'red', 'purple'];
+
+  let contextValid = true;
+  function guard() {
+    if (!contextValid) throw new Error('Extension context invalidated');
+    if (typeof chrome === 'undefined' || !chrome.storage || !chrome.storage.local) {
+      contextValid = false;
+      throw new Error('Extension context invalidated');
+    }
+  }
 
   function getHighlightClasses(color) {
     return `sh-highlight sh-${color}`;
@@ -24,12 +34,16 @@
 
   function getArticleContainer() {
     const selectors = [
+      'article[data-testid="main-content"] .body.markup',
+      'div[class*="container"] div[class*="body"]',
       'div.available-content',
       'div.post-content',
       'div[class*="post-body"]',
       'div.body',
       'article div.markup',
-      'article'
+      'article',
+      'main',
+      'div[class*="post"]'
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
@@ -139,7 +153,42 @@
     };
   }
 
+  function saveHighlightsDirect(url, highlights) {
+    try { guard(); } catch { return; }
+    chrome.storage.local.set({ [url]: highlights });
+  }
+
+  async function getStoredHighlights(url) {
+    try { guard(); } catch { return []; }
+    return new Promise(resolve => {
+      chrome.storage.local.get(url, result => resolve(result[url] || []));
+    });
+  }
+
+  function removeSpan(e) {
+    try { guard(); } catch { return; }
+    const span = e.currentTarget;
+    console.log('[Underlyne] removeSpan called', span?.dataset?.shId);
+    if (!span || !span.parentNode) return;
+    const parent = span.parentNode;
+    while (span.firstChild) {
+      parent.insertBefore(span.firstChild, span);
+    }
+    span.remove();
+    const id = span.dataset.shId;
+    const url = normalizeUrl(window.location.href);
+    chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
+    chrome.storage.local.get(url, result => {
+      let highlights = result[url] || [];
+      const before = highlights.length;
+      highlights = highlights.filter(h => h.id !== id);
+      console.log('[Underlyne] Storage after remove:', before, '->', highlights.length);
+      chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+    });
+  }
+
   function applyStyleToSelection(type, color) {
+    try { guard(); } catch { return; }
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
 
@@ -147,46 +196,56 @@
     const text = selection.toString().trim();
     if (text.length < 1) return;
 
-    const span = document.createElement('span');
-    span.className = type === 'highlight' ? getHighlightClasses(color) : getUnderlineClass(color);
-    span.dataset.shId = generateId();
-    span.dataset.shType = type;
-    span.dataset.shColor = color;
+    const selectionData = getSelectionData();
+    if (!selectionData) return;
 
-    try {
-      range.surroundContents(span);
-    } catch {
-      const fragment = range.extractContents();
-      span.appendChild(fragment);
-      range.insertNode(span);
-    }
+    const url = normalizeUrl(window.location.href);
+    chrome.storage.local.get(url, result => {
+      const highlights = result[url] || [];
+      const duplicate = highlights.some(h => h.type === type && h.startOffset === selectionData.startOffset && h.endOffset === selectionData.endOffset);
+      if (duplicate) {
+        console.log('[Underlyne] Duplicate', type, 'for this range, skipping');
+        selection.removeAllRanges();
+        return;
+      }
 
-    span.addEventListener('click', function onClick() {
-      const type = this.dataset.shType || 'highlight';
-      const color = this.dataset.shColor || 'yellow';
-      if (confirm(`Remove this ${type}?`)) {
-        const parent = this.parentNode;
-        while (this.firstChild) {
-          parent.insertBefore(this.firstChild, this);
+      const container = range.startContainer.nodeType === Node.TEXT_NODE
+        ? range.startContainer.parentElement : range.startContainer;
+      const existingId = container?.closest?.('[data-sh-id]')?.dataset?.shId;
+
+      let span;
+      if (existingId) {
+        span = document.querySelector(`[data-sh-id="${existingId}"]`);
+        const hasHl = span.classList.contains('sh-highlight');
+        const hasUl = span.classList.contains('sh-underline');
+        if (type === 'highlight') {
+          span.className = getHighlightClasses(color) + (hasUl ? ' ' + span.className.match(/sh-underline-\S+/)?.[0] : '');
+        } else {
+          span.className = (hasHl ? span.className.match(/sh-\w+/g)?.filter(c => !c.startsWith('sh-underline'))?.join(' ') || 'sh-highlight' : '') + ' ' + getUnderlineClass(color);
         }
-        this.remove();
-        const url = normalizeUrl(window.location.href);
-        const id = this.dataset.shId;
-        if (id) {
-          chrome.runtime.sendMessage({
-            action: 'deleteHighlight',
-            url,
-            id
-          });
+        span.dataset.shType = 'both';
+        span.dataset.shColor = color;
+      } else {
+        span = document.createElement('span');
+        span.className = type === 'highlight' ? getHighlightClasses(color) : getUnderlineClass(color);
+        span.dataset.shId = generateId();
+        span.dataset.shType = type;
+        span.dataset.shColor = color;
+
+        try {
+          range.surroundContents(span);
+        } catch {
+          const fragment = range.extractContents();
+          span.appendChild(fragment);
+          range.insertNode(span);
         }
       }
-    });
 
-    const selectionData = getSelectionData();
-    if (selectionData) {
+      console.log('[Underlyne] Applied', type, 'span:', span.outerHTML?.slice(0, 200));
+
       const highlightData = {
         id: span.dataset.shId,
-        url: normalizeUrl(window.location.href),
+        url,
         type,
         color,
         text: selectionData.text,
@@ -202,21 +261,99 @@
         url: highlightData.url,
         highlight: highlightData
       });
-    }
 
-    selection.removeAllRanges();
+      chrome.storage.local.get(highlightData.url, result => {
+        let highlights = result[highlightData.url] || [];
+        highlights = highlights.filter(h => h.id !== highlightData.id);
+        highlights.push(highlightData);
+        chrome.storage.local.set({ [highlightData.url]: highlights });
+      });
+
+      selection.removeAllRanges();
+    });
+  }
+
+  function wrapRangeInSpan(range, span) {
+    try {
+      range.surroundContents(span);
+      return true;
+    } catch {
+      const fragment = range.extractContents();
+      span.appendChild(fragment);
+      range.insertNode(span);
+      return true;
+    }
+  }
+
+  function findTextByContent(text, container) {
+    const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    let node;
+    while ((node = treeWalker.nextNode())) {
+      const idx = node.textContent.indexOf(text);
+      if (idx !== -1) return { node, offset: idx };
+    }
+    return null;
   }
 
   function applyHighlightFromData(data) {
-    const startNode = resolveXPath(data.startXPath);
-    const endNode = resolveXPath(data.endXPath);
+    const existingById = document.querySelector(`[data-sh-id="${data.id}"]`);
+    if (existingById) {
+      const hasHl = existingById.classList.contains('sh-highlight');
+      const hasUl = existingById.classList.contains('sh-underline');
+      if (data.type === 'underline') {
+        if (!hasUl) existingById.className += ' ' + getUnderlineClass(data.color);
+      } else {
+        if (!hasHl) existingById.className = getHighlightClasses(data.color) + (hasUl ? ' ' + existingById.className.match(/sh-underline-\S+/)?.[0] : '');
+      }
+      existingById.dataset.shType = 'both';
+      existingById.dataset.shColor = data.color;
+      return true;
+    }
 
-    if (!startNode || !endNode) return false;
+    let startNode = resolveXPath(data.startXPath);
+    let endNode = resolveXPath(data.endXPath);
+
+    if (!startNode || !endNode) {
+      const container = getArticleContainer();
+      const found = findTextByContent(data.text, container || document.body);
+      if (found) {
+        const range = document.createRange();
+        range.setStart(found.node, found.offset);
+        range.setEnd(found.node, found.offset + data.text.length);
+        const span = document.createElement('span');
+        span.className = data.type === 'underline' ? getUnderlineClass(data.color) : getHighlightClasses(data.color);
+        span.dataset.shId = data.id;
+        span.dataset.shType = data.type || 'highlight';
+        span.dataset.shColor = data.color;
+        span.addEventListener('dblclick', removeSpan);
+        wrapRangeInSpan(range, span);
+        return true;
+      }
+      return false;
+    }
 
     try {
       const range = document.createRange();
       range.setStart(startNode, data.startOffset);
       range.setEnd(endNode, data.endOffset);
+
+      const existingSpan = range.startContainer?.parentElement?.closest?.('[data-sh-id]') ||
+        (range.startContainer?.dataset?.shId ? range.startContainer : null);
+
+      if (existingSpan) {
+        const hasHl = existingSpan.classList.contains('sh-highlight');
+        const hasUl = existingSpan.classList.contains('sh-underline');
+        if (data.type === 'underline') {
+          if (!hasUl) existingSpan.className += ' ' + getUnderlineClass(data.color);
+        } else {
+          if (!hasHl) {
+            existingSpan.className = getHighlightClasses(data.color) + (hasUl ? ' ' + existingSpan.className.match(/sh-underline-\S+/)?.[0] : '');
+          }
+        }
+        existingSpan.dataset.shType = 'both';
+        existingSpan.dataset.shColor = data.color;
+        return true;
+      }
 
       const span = document.createElement('span');
       span.className = data.type === 'underline'
@@ -226,23 +363,10 @@
       span.dataset.shType = data.type || 'highlight';
       span.dataset.shColor = data.color;
 
-      span.addEventListener('click', function onClick() {
-        const t = this.dataset.shType || 'highlight';
-        if (confirm(`Remove this ${t}?`)) {
-          const parent = this.parentNode;
-          while (this.firstChild) {
-            parent.insertBefore(this.firstChild, this);
-          }
-          this.remove();
-          chrome.runtime.sendMessage({
-            action: 'deleteHighlight',
-            url: data.url,
-            id: data.id
-          });
-        }
-      });
+      span.addEventListener('dblclick', removeSpan);
 
-      range.surroundContents(span);
+      console.log('[Underlyne] Restored span:', span.outerHTML.slice(0, 200));
+      wrapRangeInSpan(range, span);
       return true;
     } catch {
       return false;
@@ -250,19 +374,38 @@
   }
 
   async function restoreHighlights() {
+    try { guard(); } catch { return; }
     const url = normalizeUrl(window.location.href);
+    console.log('[Underlyne] Restoring highlights for key:', url);
     const result = await chrome.storage.local.get(url);
     const highlights = result[url] || [];
+    console.log('[Underlyne] Found', highlights.length, 'highlights');
 
     if (highlights.length === 0) return;
 
     const container = getArticleContainer();
     if (!container) return;
 
+    let restored = 0;
     for (const data of highlights) {
       try {
-        applyHighlightFromData(data);
+        if (applyHighlightFromData(data)) restored++;
       } catch {}
+    }
+    refreshSidebar();
+
+    if (restored < highlights.length) {
+      let attempts = 0;
+      const retry = setInterval(async () => {
+        attempts++;
+        for (const data of highlights) {
+          try {
+            applyHighlightFromData(data);
+          } catch {}
+        }
+        refreshSidebar();
+        if (attempts >= 5 || document.querySelectorAll('[data-sh-id]').length >= highlights.length) clearInterval(retry);
+      }, 1500);
     }
   }
 
@@ -280,7 +423,7 @@
       btn.className = `sh-toolbar-btn hl-${color}`;
       btn.title = `Highlight ${color}`;
       btn.addEventListener('click', () => {
-        applySelectionToStyle('highlight', color);
+        applyStyleToSelection('highlight', color);
         hideToolbar();
       });
       toolbar.appendChild(btn);
@@ -300,18 +443,193 @@
       btn.className = `sh-toolbar-btn ul-${color}`;
       btn.title = `Underline ${color}`;
       btn.addEventListener('click', () => {
-        applySelectionToStyle('underline', color);
+        applyStyleToSelection('underline', color);
         hideToolbar();
       });
       toolbar.appendChild(btn);
     }
 
+    const removeBtn = document.createElement('button');
+    removeBtn.id = 'sh-remove-btn';
+    removeBtn.className = 'sh-remove-btn';
+    removeBtn.textContent = '✕';
+    removeBtn.addEventListener('click', () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount) {
+        const c = sel.getRangeAt(0).startContainer;
+        const el = c.nodeType === Node.TEXT_NODE ? c.parentElement : c;
+        const shSpan = el?.closest?.('[data-sh-id]');
+        if (shSpan) removeSpan({ currentTarget: shSpan });
+      }
+      hideToolbar();
+    });
+    toolbar.appendChild(removeBtn);
+
+    const sidebarBtn = document.createElement('button');
+    sidebarBtn.id = 'sh-sidebar-btn';
+    sidebarBtn.className = 'sh-sidebar-btn';
+    sidebarBtn.textContent = '☰';
+    sidebarBtn.title = 'Toggle sidebar';
+    sidebarBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleSidebar();
+    });
+    toolbar.appendChild(sidebarBtn);
+
     document.body.appendChild(toolbar);
     return toolbar;
   }
 
+  function createSidebar() {
+    if (document.getElementById('sh-sidebar')) return;
+    const sidebar = document.createElement('div');
+    sidebar.id = 'sh-sidebar';
+    sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><button id="sh-sidebar-close">✕</button></div><div id="sh-sidebar-list"></div>';
+    sidebar.querySelector('#sh-sidebar-close').addEventListener('click', hideSidebar);
+    document.body.appendChild(sidebar);
+  }
+
+  function getSectionHeading(el) {
+    let node = el;
+    for (let i = 0; i < 20; i++) {
+      if (!node || node === document.body) break;
+      const prev = node.previousElementSibling;
+      if (prev && /^H[1-6]$/.test(prev.tagName)) return prev.textContent.trim();
+      const parentPrev = node.parentElement?.previousElementSibling;
+      if (parentPrev && /^H[1-6]$/.test(parentPrev.tagName)) return parentPrev.textContent.trim();
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function refreshSidebar() {
+    try { guard(); } catch { return; }
+    const sidebar = document.getElementById('sh-sidebar');
+    if (!sidebar || !sidebar.classList.contains('visible')) return;
+    const url = normalizeUrl(window.location.href);
+    chrome.storage.local.get(url, result => {
+      const highlights = result[url] || [];
+      const list = document.getElementById('sh-sidebar-list');
+      if (!list) return;
+      if (highlights.length === 0) {
+        list.innerHTML = '<div class="sh-sidebar-empty">No highlights yet</div>';
+        return;
+      }
+      const merged = {};
+      for (const h of highlights) {
+        const key = h.text + '|' + h.startOffset + '|' + h.endOffset;
+        if (!merged[key]) merged[key] = { types: {}, data: h };
+        merged[key].types[h.type] = h.color;
+        if (h.timestamp > (merged[key].data.timestamp || 0)) merged[key].data = h;
+      }
+      const deduped = Object.values(merged).map(m => {
+        const hasH = m.types.highlight;
+        const hasU = m.types.underline;
+        m.data.type = hasH && hasU ? 'both' : (hasU ? 'underline' : 'highlight');
+        m.data.color = hasU ? m.types.underline : m.types.highlight;
+        return m.data;
+      });
+
+      list.innerHTML = '';
+      const grouped = {};
+      for (const h of deduped) {
+        const span = document.querySelector(`[data-sh-id="${h.id}"]`);
+        const section = span ? getSectionHeading(span) : null;
+        const key = section || '__no_section';
+        if (!grouped[key]) grouped[key] = { heading: section, items: [] };
+        grouped[key].items.push(h);
+      }
+      const sectionOrder = Object.keys(grouped).sort((a, b) => {
+        const aMin = Math.min(...grouped[a].items.map(i => i.startOffset));
+        const bMin = Math.min(...grouped[b].items.map(i => i.startOffset));
+        return aMin - bMin;
+      });
+      for (const key of sectionOrder) {
+        const group = grouped[key];
+        group.items.sort((x, y) => x.startOffset - y.startOffset);
+        if (group.heading) {
+          const head = document.createElement('div');
+          head.className = 'sh-sidebar-section';
+          head.textContent = group.heading;
+          list.appendChild(head);
+        }
+        for (const h of group.items) {
+          const item = document.createElement('div');
+          item.className = 'sh-sidebar-item';
+          const bar = document.createElement('div');
+          bar.className = `sh-sidebar-bar sh-bar-${h.color}`;
+          const body = document.createElement('div');
+          body.className = 'sh-sidebar-body';
+          const meta = document.createElement('div');
+          meta.className = 'sh-sidebar-meta';
+          if (h.type === 'both') {
+            meta.textContent = 'Highlight + Underline';
+          } else {
+            meta.textContent = h.type === 'underline' ? 'Underline' : 'Highlight';
+          }
+          const text = document.createElement('div');
+          text.className = 'sh-sidebar-text';
+          text.textContent = h.text;
+          const del = document.createElement('button');
+          del.className = 'sh-sidebar-del';
+          del.textContent = '✕';
+          del.addEventListener('click', e => {
+            e.stopPropagation();
+            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
+            if (span) removeSpan({ currentTarget: span });
+            setTimeout(refreshSidebar, 300);
+          });
+          item.addEventListener('click', () => {
+            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
+            if (span) {
+              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              span.style.outline = '2px solid #0284c7';
+              span.style.borderRadius = '2px';
+              setTimeout(() => span.style.outline = '', 1500);
+            }
+          });
+          body.appendChild(meta);
+          body.appendChild(text);
+          item.appendChild(bar);
+          item.appendChild(body);
+          item.appendChild(del);
+          list.appendChild(item);
+        }
+      }
+    });
+  }
+
+  function showSidebar() {
+    createSidebar();
+    const sidebar = document.getElementById('sh-sidebar');
+    sidebar.classList.add('visible');
+    refreshSidebar();
+  }
+
+  function hideSidebar() {
+    const sidebar = document.getElementById('sh-sidebar');
+    if (sidebar) sidebar.classList.remove('visible');
+  }
+
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sh-sidebar');
+    if (sidebar && sidebar.classList.contains('visible')) {
+      hideSidebar();
+    } else {
+      showSidebar();
+    }
+  }
+
   function showToolbar(x, y) {
     const toolbar = document.getElementById('sh-toolbar') || createToolbar();
+    const sel = window.getSelection();
+    const hasExisting = sel && sel.rangeCount > 0 && (() => {
+      const c = sel.getRangeAt(0).startContainer;
+      const el = c.nodeType === Node.TEXT_NODE ? c.parentElement : c;
+      return !!el?.closest?.('[data-sh-id]');
+    })();
+    const removeBtn = document.getElementById('sh-remove-btn');
+    if (removeBtn) removeBtn.style.display = hasExisting ? 'inline-flex' : 'none';
     toolbar.style.left = `${Math.min(x, window.innerWidth - toolbar.offsetWidth - 10)}px`;
     toolbar.style.top = `${Math.max(10, y - toolbar.offsetHeight - 8)}px`;
     toolbar.classList.add('visible');
@@ -328,6 +646,7 @@
 
     setTimeout(() => {
       const selection = window.getSelection();
+      console.log('[Underlyne] Selection:', selection?.toString().trim());
       if (selection && !selection.isCollapsed && selection.toString().trim().length > 0) {
         showToolbar(e.clientX, e.clientY);
       } else {
@@ -352,29 +671,45 @@
 
     if (isHighlight || isHighlightFallback) {
       e.preventDefault();
+      try { guard(); } catch { return; }
       chrome.runtime.sendMessage({ action: 'getDefaults' }, (response) => {
         if (response) {
-          applySelectionToStyle('highlight', response.highlightColor || 'yellow');
+          applyStyleToSelection('highlight', response.highlightColor || 'yellow');
         }
       });
     }
 
     if (isUnderline || isUnderlineFallback) {
       e.preventDefault();
+      try { guard(); } catch { return; }
       chrome.runtime.sendMessage({ action: 'getDefaults' }, (response) => {
         if (response) {
-          applySelectionToStyle('underline', response.underlineColor || 'yellow');
+          applyStyleToSelection('underline', response.underlineColor || 'yellow');
         }
       });
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      const selection = window.getSelection();
+      const container = selection?.rangeCount ? selection.getRangeAt(0).startContainer : null;
+      if (container) {
+        const el = container.nodeType === Node.TEXT_NODE ? container.parentElement : container;
+        const shSpan = el?.closest?.('[data-sh-id]');
+        if (shSpan) {
+          e.preventDefault();
+          removeSpan({ currentTarget: shSpan });
+        }
+      }
     }
   });
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    try { guard(); } catch { return; }
     if (message.action === 'applyHighlight') {
-      applySelectionToStyle('highlight', message.color || 'yellow');
+      applyStyleToSelection('highlight', message.color || 'yellow');
       sendResponse({ ok: true });
     } else if (message.action === 'applyUnderline') {
-      applySelectionToStyle('underline', message.color || 'yellow');
+      applyStyleToSelection('underline', message.color || 'yellow');
       sendResponse({ ok: true });
     } else if (message.action === 'restoreHighlights') {
       restoreHighlights().then(() => sendResponse({ ok: true }));
@@ -385,6 +720,7 @@
   function waitForContentAndRestore() {
     const check = () => {
       const container = getArticleContainer();
+      console.log('[Underlyne] Article container:', container?.tagName, container?.className);
       if (container && container.textContent.trim().length > 50) {
         restoreHighlights();
         return true;
@@ -407,14 +743,62 @@
     waitForContentAndRestore();
   }
 
-  let lastUrl = window.location.href;
-  const urlObserver = new MutationObserver(() => {
+  function scheduleRestore() {
+    let attempts = 0;
+    const tryRestore = () => {
+      attempts++;
+      const container = getArticleContainer();
+      if (container && container.textContent.trim().length > 50) {
+        restoreHighlights();
+      } else if (attempts < 15) {
+        setTimeout(tryRestore, 500);
+      }
+    };
+    setTimeout(tryRestore, 300);
+  }
+
+let lastUrl = window.location.href;
+const urlObserver = new MutationObserver(() => {
+    try { guard(); } catch { urlObserver.disconnect(); return; }
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
-      if (window.location.href.includes('substack.com/p/')) {
-        setTimeout(waitForContentAndRestore, 500);
-      }
+      scheduleRestore();
     }
   });
   urlObserver.observe(document, { subtree: true, childList: true });
+
+  window.addEventListener('popstate', () => {
+    try { guard(); } catch { return; }
+    scheduleRestore();
+  });
+
+  const restoreInterval = setInterval(() => {
+    try { guard(); } catch { clearInterval(restoreInterval); return; }
+    const currentUrl = normalizeUrl(window.location.href);
+    chrome.storage.local.get(currentUrl, result => {
+      const highlights = result[currentUrl] || [];
+      if (highlights.length > 0) {
+        const existing = document.querySelectorAll('[data-sh-id]').length;
+        if (existing < highlights.length) {
+          for (const data of highlights) {
+            try { applyHighlightFromData(data); } catch {}
+          }
+          refreshSidebar();
+        }
+      }
+    });
+  }, 2000);
+  setTimeout(() => clearInterval(restoreInterval), 20000);
+
+  const highlightObserver = new MutationObserver(() => {
+    try { guard(); } catch { highlightObserver.disconnect(); return; }
+    refreshSidebar();
+  });
+  highlightObserver.observe(document.body, { childList: true, subtree: true });
+
+  window.addEventListener('unload', () => {
+    clearInterval(restoreInterval);
+    urlObserver.disconnect();
+    highlightObserver.disconnect();
+  });
 })();

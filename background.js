@@ -9,7 +9,7 @@ chrome.runtime.onInstalled.addListener(async () => {
 
 chrome.commands.onCommand.addListener(async (command) => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('substack.com/p/')) return;
+  if (!tab || !tab.url || !(tab.url.includes('substack.com/p/') || tab.url.includes('substack.com/inbox/post/'))) return;
 
   if (command === 'highlight-selection') {
     await chrome.tabs.sendMessage(tab.id, {
@@ -21,6 +21,9 @@ chrome.commands.onCommand.addListener(async (command) => {
       action: 'applyUnderline',
       color: defaultUnderlineColor
     });
+  } else if (command === 'reload-extension') {
+    await chrome.tabs.reload(tab.id);
+    chrome.runtime.reload();
   }
 });
 

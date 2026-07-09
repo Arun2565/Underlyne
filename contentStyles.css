@@ -3,49 +3,41 @@
   cursor: pointer;
   border-radius: 2px;
   transition: opacity 0.15s ease;
+  text-decoration: none !important;
 }
 .sh-highlight:hover {
   opacity: 0.85;
 }
 
-.sh-highlight.sh-yellow { background-color: #FFEB3B; }
-.sh-highlight.sh-green  { background-color: #A5D6A7; }
-.sh-highlight.sh-blue   { background-color: #90CAF9; }
-.sh-highlight.sh-red    { background-color: #EF9A9A; }
-.sh-highlight.sh-purple { background-color: #CE93D8; }
+.sh-highlight.sh-yellow { background-color: #FDD835; }
+.sh-highlight.sh-green  { background-color: #43A047; }
+.sh-highlight.sh-blue   { background-color: #1E88E5; }
+.sh-highlight.sh-red    { background-color: #E53935; }
+.sh-highlight.sh-purple { background-color: #8E24AA; }
 
 /* ===== Underline Styles ===== */
 .sh-underline {
   cursor: pointer;
+  text-decoration: none !important;
 }
 .sh-underline:hover {
   opacity: 0.85;
 }
 
 .sh-underline-yellow {
-  text-decoration: underline;
-  text-decoration-color: #FFEB3B;
-  text-underline-offset: 2px;
+  background-image: linear-gradient(to bottom, transparent 96%, #FDD835 96%) !important;
 }
 .sh-underline-green {
-  text-decoration: underline;
-  text-decoration-color: #A5D6A7;
-  text-underline-offset: 2px;
+  background-image: linear-gradient(to bottom, transparent 96%, #43A047 96%) !important;
 }
 .sh-underline-blue {
-  text-decoration: underline;
-  text-decoration-color: #90CAF9;
-  text-underline-offset: 2px;
+  background-image: linear-gradient(to bottom, transparent 96%, #1E88E5 96%) !important;
 }
 .sh-underline-red {
-  text-decoration: underline;
-  text-decoration-color: #EF9A9A;
-  text-underline-offset: 2px;
+  background-image: linear-gradient(to bottom, transparent 96%, #E53935 96%) !important;
 }
 .sh-underline-purple {
-  text-decoration: underline;
-  text-decoration-color: #CE93D8;
-  text-underline-offset: 2px;
+  background-image: linear-gradient(to bottom, transparent 96%, #8E24AA 96%) !important;
 }
 
 /* ===== Floating Toolbar ===== */
@@ -86,17 +78,17 @@
   border-color: #ffffff;
 }
 
-.sh-toolbar-btn.hl-yellow { background: #FFEB3B; }
-.sh-toolbar-btn.hl-green  { background: #A5D6A7; }
-.sh-toolbar-btn.hl-blue   { background: #90CAF9; }
-.sh-toolbar-btn.hl-red    { background: #EF9A9A; }
-.sh-toolbar-btn.hl-purple { background: #CE93D8; }
+.sh-toolbar-btn.hl-yellow { background: #FDD835; }
+.sh-toolbar-btn.hl-green  { background: #43A047; }
+.sh-toolbar-btn.hl-blue   { background: #1E88E5; }
+.sh-toolbar-btn.hl-red    { background: #E53935; }
+.sh-toolbar-btn.hl-purple { background: #8E24AA; }
 
-.sh-toolbar-btn.ul-yellow { background: #FFEB3B; }
-.sh-toolbar-btn.ul-green  { background: #A5D6A7; }
-.sh-toolbar-btn.ul-blue   { background: #90CAF9; }
-.sh-toolbar-btn.ul-red    { background: #EF9A9A; }
-.sh-toolbar-btn.ul-purple { background: #CE93D8; }
+.sh-toolbar-btn.ul-yellow { background: #FDD835; }
+.sh-toolbar-btn.ul-green  { background: #43A047; }
+.sh-toolbar-btn.ul-blue   { background: #1E88E5; }
+.sh-toolbar-btn.ul-red    { background: #E53935; }
+.sh-toolbar-btn.ul-purple { background: #8E24AA; }
 
 #sh-toolbar .sh-divider {
   width: 1px;
@@ -112,4 +104,142 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-right: 2px;
+}
+
+.sh-remove-btn, .sh-sidebar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  padding: 3px 7px;
+  border: none;
+  border-radius: 4px;
+  background: #33335a;
+  color: #ddd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.sh-remove-btn:hover, .sh-sidebar-btn:hover {
+  background: #4a4a7a;
+}
+
+/* ===== Right Sidebar (Substack-style) ===== */
+#sh-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 260px;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 2147483646;
+  background: #ffffff;
+  border-left: 1px solid #e6e6e6;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  transform: translateX(100%);
+  transition: transform 0.2s ease;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.06);
+}
+#sh-sidebar.visible {
+  transform: translateX(0);
+}
+#sh-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid #e6e6e6;
+}
+#sh-sidebar-title {
+  color: #363737;
+  font-size: 14px;
+  font-weight: 600;
+}
+#sh-sidebar-close {
+  background: none;
+  border: none;
+  color: #868787;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+#sh-sidebar-close:hover {
+  background: #f0f0f0;
+  color: #363737;
+}
+#sh-sidebar-list {
+  padding: 8px 0;
+}
+.sh-sidebar-empty {
+  color: #868787;
+  font-size: 13px;
+  text-align: center;
+  padding: 24px 16px;
+}
+.sh-sidebar-section {
+  padding: 12px 16px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #868787;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.sh-sidebar-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  border-bottom: 1px solid #f0f0f0;
+}
+.sh-sidebar-item:hover {
+  background: #fafafa;
+}
+.sh-sidebar-bar {
+  width: 4px;
+  flex-shrink: 0;
+}
+.sh-bar-yellow { background: #FDD835; }
+.sh-bar-green  { background: #43A047; }
+.sh-bar-blue   { background: #1E88E5; }
+.sh-bar-red    { background: #E53935; }
+.sh-bar-purple { background: #8E24AA; }
+.sh-sidebar-body {
+  flex: 1;
+  padding: 10px 12px 10px 10px;
+  min-width: 0;
+}
+.sh-sidebar-meta {
+  font-size: 10px;
+  font-weight: 600;
+  color: #868787;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 3px;
+}
+.sh-sidebar-text {
+  font-size: 13px;
+  color: #363737;
+  line-height: 1.5;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+.sh-sidebar-del {
+  background: none;
+  border: none;
+  color: #b7b7b7;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 10px 10px 0 0;
+  border-radius: 3px;
+  flex-shrink: 0;
+  line-height: 1;
+  align-self: flex-start;
+}
+.sh-sidebar-del:hover {
+  color: #c62828;
 }
