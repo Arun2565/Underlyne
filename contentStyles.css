@@ -1,0 +1,115 @@
+/* ===== Highlight Styles ===== */
+.sh-highlight {
+  cursor: pointer;
+  border-radius: 2px;
+  transition: opacity 0.15s ease;
+}
+.sh-highlight:hover {
+  opacity: 0.85;
+}
+
+.sh-highlight.sh-yellow { background-color: #FFEB3B; }
+.sh-highlight.sh-green  { background-color: #A5D6A7; }
+.sh-highlight.sh-blue   { background-color: #90CAF9; }
+.sh-highlight.sh-red    { background-color: #EF9A9A; }
+.sh-highlight.sh-purple { background-color: #CE93D8; }
+
+/* ===== Underline Styles ===== */
+.sh-underline {
+  cursor: pointer;
+}
+.sh-underline:hover {
+  opacity: 0.85;
+}
+
+.sh-underline-yellow {
+  text-decoration: underline;
+  text-decoration-color: #FFEB3B;
+  text-underline-offset: 2px;
+}
+.sh-underline-green {
+  text-decoration: underline;
+  text-decoration-color: #A5D6A7;
+  text-underline-offset: 2px;
+}
+.sh-underline-blue {
+  text-decoration: underline;
+  text-decoration-color: #90CAF9;
+  text-underline-offset: 2px;
+}
+.sh-underline-red {
+  text-decoration: underline;
+  text-decoration-color: #EF9A9A;
+  text-underline-offset: 2px;
+}
+.sh-underline-purple {
+  text-decoration: underline;
+  text-decoration-color: #CE93D8;
+  text-underline-offset: 2px;
+}
+
+/* ===== Floating Toolbar ===== */
+#sh-toolbar {
+  position: fixed;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: #1a1a2e;
+  border: 1px solid #2d2d44;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+#sh-toolbar.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.sh-toolbar-btn {
+  width: 24px;
+  height: 24px;
+  border: 2px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+}
+.sh-toolbar-btn:hover {
+  transform: scale(1.15);
+}
+.sh-toolbar-btn.active {
+  border-color: #ffffff;
+}
+
+.sh-toolbar-btn.hl-yellow { background: #FFEB3B; }
+.sh-toolbar-btn.hl-green  { background: #A5D6A7; }
+.sh-toolbar-btn.hl-blue   { background: #90CAF9; }
+.sh-toolbar-btn.hl-red    { background: #EF9A9A; }
+.sh-toolbar-btn.hl-purple { background: #CE93D8; }
+
+.sh-toolbar-btn.ul-yellow { background: #FFEB3B; }
+.sh-toolbar-btn.ul-green  { background: #A5D6A7; }
+.sh-toolbar-btn.ul-blue   { background: #90CAF9; }
+.sh-toolbar-btn.ul-red    { background: #EF9A9A; }
+.sh-toolbar-btn.ul-purple { background: #CE93D8; }
+
+#sh-toolbar .sh-divider {
+  width: 1px;
+  height: 20px;
+  background: #3d3d5c;
+  margin: 0 2px;
+}
+
+#sh-toolbar .sh-label {
+  color: #a0a0c0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 2px;
+}

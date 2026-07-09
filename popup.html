@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Substack Highlighter</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Substack Highlighter</h1>
+      <span id="count" class="count">0</span>
+    </header>
+
+    <section class="defaults-section">
+      <div class="color-row">
+        <label>Highlight:</label>
+        <div class="color-options" id="hl-colors"></div>
+      </div>
+      <div class="color-row">
+        <label>Underline:</label>
+        <div class="color-options" id="ul-colors"></div>
+      </div>
+    </section>
+
+    <section class="actions">
+      <button id="btn-export" class="btn btn-secondary">Export</button>
+      <button id="btn-import" class="btn btn-secondary">Import</button>
+      <button id="btn-clear-all" class="btn btn-danger">Clear All</button>
+    </section>
+
+    <div id="import-input" class="import-area" style="display:none">
+      <textarea id="import-textarea" placeholder="Paste exported JSON here..."></textarea>
+      <button id="btn-do-import" class="btn btn-primary">Import</button>
+    </div>
+
+    <section id="highlights-section">
+      <h2>Highlights &amp; Underlines</h2>
+      <div id="empty-state" class="empty-state">No annotations on this page.</div>
+      <ul id="highlights-list"></ul>
+    </section>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

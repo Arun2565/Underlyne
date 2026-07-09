@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Substack Highlighter",
+  "version": "1.0.0",
+  "description": "Highlight and underline text on Substack articles. Persists across page reloads.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://*.substack.com/p/*"
+  ],
+  "commands": {
+    "highlight-selection": {
+      "suggested_key": {
+        "default": "Ctrl+H",
+        "mac": "Command+H"
+      },
+      "description": "Highlight selected text"
+    },
+    "underline-selection": {
+      "suggested_key": {
+        "default": "Ctrl+U",
+        "mac": "Command+U"
+      },
+      "description": "Underline selected text"
+    }
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Substack Highlighter",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.substack.com/p/*"],
+      "js": ["content.js"],
+      "css": ["contentStyles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
