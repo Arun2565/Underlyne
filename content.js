@@ -744,6 +744,30 @@
     } else if (message.action === 'restoreHighlights') {
       restoreHighlights().then(() => sendResponse({ ok: true }));
       return true;
+    } else if (message.action === 'getAnnotationsWithContext') {
+      const spans = document.querySelectorAll('[data-sh-id]');
+      const annotations = Array.from(spans).map(span => {
+        const parent = span.parentNode;
+        const fullText = parent ? parent.textContent : '';
+        const spanText = span.textContent;
+        const idx = fullText.indexOf(spanText);
+        let contextBefore = '';
+        let contextAfter = '';
+        if (idx !== -1) {
+          contextBefore = fullText.substring(Math.max(0, idx - 60), idx).trim();
+          contextAfter = fullText.substring(idx + spanText.length, idx + spanText.length + 60).trim();
+        }
+        return {
+          id: span.dataset.shId,
+          type: span.dataset.shType || 'highlight',
+          color: span.dataset.shColor || 'yellow',
+          text: spanText,
+          contextBefore,
+          contextAfter
+        };
+      });
+      sendResponse({ annotations, articleTitle: document.title, url: window.location.href });
+      return true;
     }
   });
 
