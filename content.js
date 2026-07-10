@@ -43,13 +43,27 @@
       'article div.markup',
       'article',
       'main',
-      'div[class*="post"]'
+      'div[class*="post"]',
+      'div.main-content',
+      'section.post',
+      'div.prose'
     ];
     for (const sel of selectors) {
       const el = document.querySelector(sel);
-      if (el) return el;
+      if (el && el.textContent.trim().length > 50) return el;
     }
-    return document.body;
+    // fallback: find the element with the most text content (exclude body/html)
+    const candidates = document.querySelectorAll('div, article, main, section');
+    let best = null;
+    let maxLen = 0;
+    for (const el of candidates) {
+      const len = el.textContent.trim().length;
+      if (len > maxLen && len > 100 && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
+        maxLen = len;
+        best = el;
+      }
+    }
+    return best || document.body;
   }
 
   function findTextNode(node, offset) {
@@ -181,7 +195,131 @@
     chrome.storage.local.get(url, result => {
       let highlights = result[url] || [];
       highlights = highlights.filter(h => h.id !== id);
-      chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+      chrome.storage.local.set({ [url]: highlights }, () => refreshAnnotationPanel());
+    });
+  }
+
+  function setupAnnotationLayout() {
+    try { guard(); } catch { return; }
+    let wrapper = document.getElementById('sh-grid-wrapper');
+    let articleCol = document.getElementById('sh-article-col');
+    let panel = document.getElementById('sh-annotation-panel');
+    const container = getArticleContainer();
+    if (!container || container === document.body) return;
+    if (wrapper && articleCol && articleCol.contains(container)) return;
+    if (wrapper) wrapper.remove();
+    wrapper = document.createElement('div');
+    wrapper.id = 'sh-grid-wrapper';
+    articleCol = document.createElement('div');
+    articleCol.id = 'sh-article-col';
+    panel = document.createElement('div');
+    panel.id = 'sh-annotation-panel';
+    panel.innerHTML = '<div class="sh-ae-empty">No highlights yet</div>';
+    container.parentNode.insertBefore(wrapper, container);
+    wrapper.appendChild(articleCol);
+    wrapper.appendChild(panel);
+    articleCol.appendChild(container);
+  }
+
+  function getSpanOffset(span) {
+    const articleCol = document.getElementById('sh-article-col');
+    if (!articleCol) return 0;
+    const colRect = articleCol.getBoundingClientRect();
+    const spanRect = span.getBoundingClientRect();
+    return spanRect.top - colRect.top;
+  }
+
+  function addAnnotationEntry(data, span) {
+    setupAnnotationLayout();
+    const panel = document.getElementById('sh-annotation-panel');
+    if (!panel) return;
+    const empty = panel.querySelector('.sh-ae-empty');
+    if (empty) empty.remove();
+    let entry = panel.querySelector(`[data-sh-ae-id="${data.id}"]`);
+    if (entry) return;
+    const offset = getSpanOffset(span);
+    entry = document.createElement('div');
+    entry.className = 'sh-annotation-entry';
+    entry.dataset.shAeId = data.id;
+    entry.style.top = offset + 'px';
+    const bar = document.createElement('div');
+    bar.className = 'sh-ae-bar sh-ae-bar-' + data.color;
+    const content = document.createElement('div');
+    content.className = 'sh-ae-content';
+    const meta = document.createElement('div');
+    meta.className = 'sh-ae-meta';
+    meta.textContent = data.type === 'underline' ? 'Underline' : data.type === 'both' ? 'Highlight + Underline' : 'Highlight';
+    const text = document.createElement('div');
+    text.className = 'sh-ae-text';
+    text.textContent = data.text;
+    const del = document.createElement('button');
+    del.className = 'sh-ae-delete';
+    del.textContent = '✕';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      const targetSpan = document.querySelector(`[data-sh-id="${data.id}"]`);
+      if (targetSpan) removeSpan({ currentTarget: targetSpan });
+    });
+    entry.addEventListener('click', () => {
+      const targetSpan = document.querySelector(`[data-sh-id="${data.id}"]`);
+      if (targetSpan) {
+        targetSpan.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        targetSpan.style.outline = '2px solid #0284c7';
+        targetSpan.style.borderRadius = '2px';
+        setTimeout(() => targetSpan.style.outline = '', 1500);
+      }
+    });
+    content.appendChild(meta);
+    content.appendChild(text);
+    entry.appendChild(bar);
+    entry.appendChild(content);
+    entry.appendChild(del);
+    panel.appendChild(entry);
+  }
+
+  function removeAnnotationEntry(id) {
+    const panel = document.getElementById('sh-annotation-panel');
+    if (!panel) return;
+    const entry = panel.querySelector(`[data-sh-ae-id="${id}"]`);
+    if (!entry) return;
+    entry.remove();
+    if (!panel.querySelector('.sh-annotation-entry')) {
+      panel.innerHTML = '<div class="sh-ae-empty">No highlights yet</div>';
+    }
+  }
+
+  function refreshAnnotationPanel() {
+    try { guard(); } catch { return; }
+    const panel = document.getElementById('sh-annotation-panel');
+    if (!panel) return;
+    const url = normalizeUrl(window.location.href);
+    chrome.storage.local.get(url, result => {
+      const highlights = result[url] || [];
+      panel.querySelectorAll('.sh-annotation-entry').forEach(el => el.remove());
+      if (highlights.length === 0) {
+        panel.innerHTML = '<div class="sh-ae-empty">No highlights yet</div>';
+        return;
+      }
+      const empty = panel.querySelector('.sh-ae-empty');
+      if (empty) empty.remove();
+      const merged = {};
+      for (const h of highlights) {
+        const key = h.text + '|' + h.startOffset + '|' + h.endOffset;
+        if (!merged[key]) merged[key] = { types: {}, data: h };
+        merged[key].types[h.type] = h.color;
+        if (h.timestamp > (merged[key].data.timestamp || 0)) merged[key].data = h;
+      }
+      const deduped = Object.values(merged).map(m => {
+        const hasH = m.types.highlight;
+        const hasU = m.types.underline;
+        m.data.type = hasH && hasU ? 'both' : (hasU ? 'underline' : 'highlight');
+        m.data.color = hasU ? m.types.underline : m.types.highlight;
+        return m.data;
+      });
+      for (const h of deduped) {
+        const span = document.querySelector(`[data-sh-id="${h.id}"]`);
+        if (span) addAnnotationEntry(h, span);
+      }
     });
   }
 
@@ -272,6 +410,7 @@
       }
     }
 
+    addAnnotationEntry(highlightData, span);
     selection.removeAllRanges();
   }
 
@@ -396,7 +535,7 @@
           if (applyHighlightFromData(data)) restored++;
         } catch {}
       }
-      refreshSidebar();
+      refreshAnnotationPanel();
 
       if (restored < highlights.length) {
         let attempts = 0;
@@ -407,7 +546,7 @@
               applyHighlightFromData(data);
             } catch {}
           }
-          refreshSidebar();
+          refreshAnnotationPanel();
           if (attempts >= 5 || document.querySelectorAll('[data-sh-id]').length >= highlights.length) clearInterval(retry);
         }, 1500);
       }
@@ -472,158 +611,8 @@
     });
     toolbar.appendChild(removeBtn);
 
-    const sidebarBtn = document.createElement('button');
-    sidebarBtn.id = 'sh-sidebar-btn';
-    sidebarBtn.className = 'sh-sidebar-btn';
-    sidebarBtn.textContent = '☰';
-    sidebarBtn.title = 'Toggle sidebar';
-    sidebarBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleSidebar();
-    });
-    toolbar.appendChild(sidebarBtn);
-
     document.body.appendChild(toolbar);
     return toolbar;
-  }
-
-  function createSidebar() {
-    if (document.getElementById('sh-sidebar')) return;
-    const sidebar = document.createElement('div');
-    sidebar.id = 'sh-sidebar';
-    sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><button id="sh-sidebar-close">✕</button></div><div id="sh-sidebar-list"></div>';
-    sidebar.querySelector('#sh-sidebar-close').addEventListener('click', hideSidebar);
-    document.body.appendChild(sidebar);
-  }
-
-  function getSectionHeading(el) {
-    let node = el;
-    for (let i = 0; i < 20; i++) {
-      if (!node || node === document.body) break;
-      const prev = node.previousElementSibling;
-      if (prev && /^H[1-6]$/.test(prev.tagName)) return prev.textContent.trim();
-      const parentPrev = node.parentElement?.previousElementSibling;
-      if (parentPrev && /^H[1-6]$/.test(parentPrev.tagName)) return parentPrev.textContent.trim();
-      node = node.parentElement;
-    }
-    return null;
-  }
-
-  function refreshSidebar() {
-    try { guard(); } catch { return; }
-    const sidebar = document.getElementById('sh-sidebar');
-    if (!sidebar || !sidebar.classList.contains('visible')) return;
-    const url = normalizeUrl(window.location.href);
-    chrome.storage.local.get(url, result => {
-      const highlights = result[url] || [];
-      const list = document.getElementById('sh-sidebar-list');
-      if (!list) return;
-      if (highlights.length === 0) {
-        list.innerHTML = '<div class="sh-sidebar-empty">No highlights yet</div>';
-        return;
-      }
-      const merged = {};
-      for (const h of highlights) {
-        const key = h.text + '|' + h.startOffset + '|' + h.endOffset;
-        if (!merged[key]) merged[key] = { types: {}, data: h };
-        merged[key].types[h.type] = h.color;
-        if (h.timestamp > (merged[key].data.timestamp || 0)) merged[key].data = h;
-      }
-      const deduped = Object.values(merged).map(m => {
-        const hasH = m.types.highlight;
-        const hasU = m.types.underline;
-        m.data.type = hasH && hasU ? 'both' : (hasU ? 'underline' : 'highlight');
-        m.data.color = hasU ? m.types.underline : m.types.highlight;
-        return m.data;
-      });
-
-      list.innerHTML = '';
-      const grouped = {};
-      for (const h of deduped) {
-        const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-        const section = span ? getSectionHeading(span) : null;
-        const key = section || '__no_section';
-        if (!grouped[key]) grouped[key] = { heading: section, items: [] };
-        grouped[key].items.push(h);
-      }
-      const sectionOrder = Object.keys(grouped).sort((a, b) => {
-        const aMin = Math.min(...grouped[a].items.map(i => i.startOffset));
-        const bMin = Math.min(...grouped[b].items.map(i => i.startOffset));
-        return aMin - bMin;
-      });
-      for (const key of sectionOrder) {
-        const group = grouped[key];
-        group.items.sort((x, y) => x.startOffset - y.startOffset);
-        if (group.heading) {
-          const head = document.createElement('div');
-          head.className = 'sh-sidebar-section';
-          head.textContent = group.heading;
-          list.appendChild(head);
-        }
-        for (const h of group.items) {
-          const item = document.createElement('div');
-          item.className = 'sh-sidebar-item';
-          const bar = document.createElement('div');
-          bar.className = `sh-sidebar-bar sh-bar-${h.color}`;
-          const body = document.createElement('div');
-          body.className = 'sh-sidebar-body';
-          const meta = document.createElement('div');
-          meta.className = 'sh-sidebar-meta';
-          if (h.type === 'both') {
-            meta.textContent = 'Highlight + Underline';
-          } else {
-            meta.textContent = h.type === 'underline' ? 'Underline' : 'Highlight';
-          }
-          const text = document.createElement('div');
-          text.className = 'sh-sidebar-text';
-          text.textContent = h.text;
-          const del = document.createElement('button');
-          del.className = 'sh-sidebar-del';
-          del.textContent = '✕';
-          del.addEventListener('click', e => {
-            e.stopPropagation();
-            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-            if (span) removeSpan({ currentTarget: span });
-          });
-          item.addEventListener('click', () => {
-            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-            if (span) {
-              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              span.style.outline = '2px solid #0284c7';
-              span.style.borderRadius = '2px';
-              setTimeout(() => span.style.outline = '', 1500);
-            }
-          });
-          body.appendChild(meta);
-          body.appendChild(text);
-          item.appendChild(bar);
-          item.appendChild(body);
-          item.appendChild(del);
-          list.appendChild(item);
-        }
-      }
-    });
-  }
-
-  function showSidebar() {
-    createSidebar();
-    const sidebar = document.getElementById('sh-sidebar');
-    sidebar.classList.add('visible');
-    refreshSidebar();
-  }
-
-  function hideSidebar() {
-    const sidebar = document.getElementById('sh-sidebar');
-    if (sidebar) sidebar.classList.remove('visible');
-  }
-
-  function toggleSidebar() {
-    const sidebar = document.getElementById('sh-sidebar');
-    if (sidebar && sidebar.classList.contains('visible')) {
-      hideSidebar();
-    } else {
-      showSidebar();
-    }
   }
 
   function showToolbar(x, y) {
@@ -648,9 +637,9 @@
 
   document.addEventListener('mouseup', (e) => {
     const toolbar = document.getElementById('sh-toolbar');
-    const sidebar = document.getElementById('sh-sidebar');
+    const panel = document.getElementById('sh-annotation-panel');
     if (toolbar && (e.target === toolbar || toolbar.contains(e.target))) return;
-    if (sidebar && (e.target === sidebar || sidebar.contains(e.target))) return;
+    if (panel && (e.target === panel || panel.contains(e.target))) return;
 
     setTimeout(() => {
       const selection = window.getSelection();
@@ -730,6 +719,7 @@
       const container = getArticleContainer();
       console.log('[Underlyne] Article container:', container?.tagName, container?.className);
       if (container && container.textContent.trim().length > 50) {
+        setupAnnotationLayout();
         restoreHighlights();
         return true;
       }
@@ -757,6 +747,7 @@
       attempts++;
       const container = getArticleContainer();
       if (container && container.textContent.trim().length > 50) {
+        setupAnnotationLayout();
         restoreHighlights();
       } else if (attempts < 15) {
         setTimeout(tryRestore, 500);
@@ -791,22 +782,15 @@ const urlObserver = new MutationObserver(() => {
           for (const data of highlights) {
             try { applyHighlightFromData(data); } catch {}
           }
-          refreshSidebar();
+          refreshAnnotationPanel();
         }
       }
     });
   }, 2000);
   setTimeout(() => clearInterval(restoreInterval), 20000);
 
-  const highlightObserver = new MutationObserver(() => {
-    try { guard(); } catch { highlightObserver.disconnect(); return; }
-    refreshSidebar();
-  });
-  highlightObserver.observe(document.body, { childList: true, subtree: true });
-
   window.addEventListener('unload', () => {
     clearInterval(restoreInterval);
     urlObserver.disconnect();
-    highlightObserver.disconnect();
   });
 })();
