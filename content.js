@@ -775,7 +775,7 @@
   }, 3000);
   setTimeout(() => clearInterval(restoreInterval), 12000);
 
-  window.addEventListener('pagehide', () => {
+  window.addEventListener('unload', () => {
     clearInterval(navCheckInterval);
     clearInterval(restoreInterval);
   });
