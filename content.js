@@ -180,9 +180,7 @@
     chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
     chrome.storage.local.get(url, result => {
       let highlights = result[url] || [];
-      const before = highlights.length;
       highlights = highlights.filter(h => h.id !== id);
-      console.log('[Underlyne] Storage after remove:', before, '->', highlights.length);
       chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
     });
   }
@@ -199,78 +197,82 @@
     const selectionData = getSelectionData();
     if (!selectionData) return;
 
-    const url = normalizeUrl(window.location.href);
-    chrome.storage.local.get(url, result => {
-      const highlights = result[url] || [];
-      const duplicate = highlights.some(h => h.type === type && h.startOffset === selectionData.startOffset && h.endOffset === selectionData.endOffset);
-      if (duplicate) {
-        console.log('[Underlyne] Duplicate', type, 'for this range, skipping');
-        selection.removeAllRanges();
-        return;
-      }
+    // Apply visual styling immediately (no storage dependency)
+    const container = range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement : range.startContainer;
+    const existingId = container?.closest?.('[data-sh-id]')?.dataset?.shId;
 
-      const container = range.startContainer.nodeType === Node.TEXT_NODE
-        ? range.startContainer.parentElement : range.startContainer;
-      const existingId = container?.closest?.('[data-sh-id]')?.dataset?.shId;
-
-      let span;
-      if (existingId) {
-        span = document.querySelector(`[data-sh-id="${existingId}"]`);
-        const hasHl = span.classList.contains('sh-highlight');
-        const hasUl = span.classList.contains('sh-underline');
-        if (type === 'highlight') {
-          span.className = getHighlightClasses(color) + (hasUl ? ' ' + span.className.match(/sh-underline-\S+/)?.[0] : '');
-        } else {
-          span.className = (hasHl ? span.className.match(/sh-\w+/g)?.filter(c => !c.startsWith('sh-underline'))?.join(' ') || 'sh-highlight' : '') + ' ' + getUnderlineClass(color);
-        }
-        span.dataset.shType = 'both';
-        span.dataset.shColor = color;
+    let span;
+    if (existingId) {
+      span = document.querySelector(`[data-sh-id="${existingId}"]`);
+      if (!span) return;
+      const hasHl = span.classList.contains('sh-highlight');
+      const hasUl = span.classList.contains('sh-underline');
+      if (type === 'highlight') {
+        span.className = getHighlightClasses(color) + (hasUl ? ' ' + span.className.match(/sh-underline-\S+/)?.[0] : '');
       } else {
-        span = document.createElement('span');
-        span.className = type === 'highlight' ? getHighlightClasses(color) : getUnderlineClass(color);
-        span.dataset.shId = generateId();
-        span.dataset.shType = type;
-        span.dataset.shColor = color;
+        span.className = (hasHl ? span.className.match(/sh-\w+/g)?.filter(c => !c.startsWith('sh-underline'))?.join(' ') || 'sh-highlight' : '') + ' ' + getUnderlineClass(color);
+      }
+      span.dataset.shType = 'both';
+      span.dataset.shColor = color;
+    } else {
+      span = document.createElement('span');
+      span.className = type === 'highlight' ? getHighlightClasses(color) : getUnderlineClass(color);
+      span.dataset.shId = generateId();
+      span.dataset.shType = type;
+      span.dataset.shColor = color;
 
+      try {
+        range.surroundContents(span);
+      } catch {
         try {
-          range.surroundContents(span);
-        } catch {
           const fragment = range.extractContents();
           span.appendChild(fragment);
           range.insertNode(span);
+        } catch (e) {
+          console.error('[Underlyne] Failed to insert span:', e);
+          return;
         }
       }
+    }
 
-      console.log('[Underlyne] Applied', type, 'span:', span.outerHTML?.slice(0, 200));
+    console.log('[Underlyne] Applied', type, 'span:', span.outerHTML?.slice(0, 200));
 
-      const highlightData = {
-        id: span.dataset.shId,
-        url,
-        type,
-        color,
-        text: selectionData.text,
-        startXPath: selectionData.startXPath,
-        startOffset: selectionData.startOffset,
-        endXPath: selectionData.endXPath,
-        endOffset: selectionData.endOffset,
-        timestamp: Date.now()
-      };
+    // Persist (best-effort, fire-and-forget)
+    const url = normalizeUrl(window.location.href);
+    const highlightData = {
+      id: span.dataset.shId,
+      url,
+      type,
+      color,
+      text: selectionData.text,
+      startXPath: selectionData.startXPath,
+      startOffset: selectionData.startOffset,
+      endXPath: selectionData.endXPath,
+      endOffset: selectionData.endOffset,
+      timestamp: Date.now()
+    };
 
+    try {
       chrome.runtime.sendMessage({
         action: 'saveHighlight',
         url: highlightData.url,
         highlight: highlightData
       });
+    } catch (e) {
+      console.error('[Underlyne] sendMessage persistence failed, trying direct storage:', e);
+      try {
+        chrome.storage.local.get(url, result => {
+          const stored = result[url] || [];
+          stored.push(highlightData);
+          chrome.storage.local.set({ [url]: stored });
+        });
+      } catch (e2) {
+        console.error('[Underlyne] Direct storage persistence also failed:', e2);
+      }
+    }
 
-      chrome.storage.local.get(highlightData.url, result => {
-        let highlights = result[highlightData.url] || [];
-        highlights = highlights.filter(h => h.id !== highlightData.id);
-        highlights.push(highlightData);
-        chrome.storage.local.set({ [highlightData.url]: highlights });
-      });
-
-      selection.removeAllRanges();
-    });
+    selection.removeAllRanges();
   }
 
   function wrapRangeInSpan(range, span) {
@@ -377,35 +379,40 @@
     try { guard(); } catch { return; }
     const url = normalizeUrl(window.location.href);
     console.log('[Underlyne] Restoring highlights for key:', url);
-    const result = await chrome.storage.local.get(url);
-    const highlights = result[url] || [];
-    console.log('[Underlyne] Found', highlights.length, 'highlights');
+    try {
+      const highlights = await new Promise(resolve => {
+        chrome.storage.local.get(url, result => resolve(result[url] || []));
+      });
+      console.log('[Underlyne] Found', highlights.length, 'highlights');
 
-    if (highlights.length === 0) return;
+      if (highlights.length === 0) return;
 
-    const container = getArticleContainer();
-    if (!container) return;
+      const container = getArticleContainer();
+      if (!container) return;
 
-    let restored = 0;
-    for (const data of highlights) {
-      try {
-        if (applyHighlightFromData(data)) restored++;
-      } catch {}
-    }
-    refreshSidebar();
+      let restored = 0;
+      for (const data of highlights) {
+        try {
+          if (applyHighlightFromData(data)) restored++;
+        } catch {}
+      }
+      refreshSidebar();
 
-    if (restored < highlights.length) {
-      let attempts = 0;
-      const retry = setInterval(async () => {
-        attempts++;
-        for (const data of highlights) {
-          try {
-            applyHighlightFromData(data);
-          } catch {}
-        }
-        refreshSidebar();
-        if (attempts >= 5 || document.querySelectorAll('[data-sh-id]').length >= highlights.length) clearInterval(retry);
-      }, 1500);
+      if (restored < highlights.length) {
+        let attempts = 0;
+        const retry = setInterval(async () => {
+          attempts++;
+          for (const data of highlights) {
+            try {
+              applyHighlightFromData(data);
+            } catch {}
+          }
+          refreshSidebar();
+          if (attempts >= 5 || document.querySelectorAll('[data-sh-id]').length >= highlights.length) clearInterval(retry);
+        }, 1500);
+      }
+    } catch (e) {
+      console.error('[Underlyne] restoreHighlights error:', e);
     }
   }
 
@@ -418,7 +425,7 @@
     hlLabel.textContent = 'H';
     toolbar.appendChild(hlLabel);
 
-    for (const color of ['yellow', 'green', 'blue', 'red', 'purple']) {
+    for (const color of ['red', 'yellow', 'green', 'blue', 'purple']) {
       const btn = document.createElement('button');
       btn.className = `sh-toolbar-btn hl-${color}`;
       btn.title = `Highlight ${color}`;
@@ -438,7 +445,7 @@
     ulLabel.textContent = 'U';
     toolbar.appendChild(ulLabel);
 
-    for (const color of ['yellow', 'green', 'blue', 'red', 'purple']) {
+    for (const color of ['red', 'yellow', 'green', 'blue', 'purple']) {
       const btn = document.createElement('button');
       btn.className = `sh-toolbar-btn ul-${color}`;
       btn.title = `Underline ${color}`;
@@ -577,7 +584,6 @@
             e.stopPropagation();
             const span = document.querySelector(`[data-sh-id="${h.id}"]`);
             if (span) removeSpan({ currentTarget: span });
-            setTimeout(refreshSidebar, 300);
           });
           item.addEventListener('click', () => {
             const span = document.querySelector(`[data-sh-id="${h.id}"]`);
@@ -642,7 +648,9 @@
 
   document.addEventListener('mouseup', (e) => {
     const toolbar = document.getElementById('sh-toolbar');
+    const sidebar = document.getElementById('sh-sidebar');
     if (toolbar && (e.target === toolbar || toolbar.contains(e.target))) return;
+    if (sidebar && (e.target === sidebar || sidebar.contains(e.target))) return;
 
     setTimeout(() => {
       const selection = window.getSelection();

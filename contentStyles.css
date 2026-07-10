@@ -25,19 +25,19 @@
 }
 
 .sh-underline-yellow {
-  background-image: linear-gradient(to bottom, transparent 96%, #FDD835 96%) !important;
+  background-image: linear-gradient(to bottom, transparent 95.6%, #FDD835 95.6%) !important;
 }
 .sh-underline-green {
-  background-image: linear-gradient(to bottom, transparent 96%, #43A047 96%) !important;
+  background-image: linear-gradient(to bottom, transparent 95.6%, #43A047 95.6%) !important;
 }
 .sh-underline-blue {
-  background-image: linear-gradient(to bottom, transparent 96%, #1E88E5 96%) !important;
+  background-image: linear-gradient(to bottom, transparent 95.6%, #1E88E5 95.6%) !important;
 }
 .sh-underline-red {
-  background-image: linear-gradient(to bottom, transparent 96%, #E53935 96%) !important;
+  background-image: linear-gradient(to bottom, transparent 95.6%, #E53935 95.6%) !important;
 }
 .sh-underline-purple {
-  background-image: linear-gradient(to bottom, transparent 96%, #8E24AA 96%) !important;
+  background-image: linear-gradient(to bottom, transparent 95.6%, #8E24AA 95.6%) !important;
 }
 
 /* ===== Floating Toolbar ===== */

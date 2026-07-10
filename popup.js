@@ -4,7 +4,7 @@ let currentUrl = '';
 
 document.addEventListener('DOMContentLoaded', async () => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab || !tab.url || !tab.url.includes('substack.com/p/')) {
+  if (!tab || !tab.url || !(tab.url.includes('substack.com/p/') || tab.url.includes('substack.com/inbox/post/'))) {
     document.getElementById('highlights-section').innerHTML =
       '<p style="text-align:center;padding:20px;color:#aaa">Open a Substack article to see highlights.</p>';
     return;

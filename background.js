@@ -1,25 +1,26 @@
-let defaultHighlightColor = 'yellow';
-let defaultUnderlineColor = 'yellow';
-
-chrome.runtime.onInstalled.addListener(async () => {
+async function getStoredDefaults() {
   const result = await chrome.storage.local.get(['defaultHighlightColor', 'defaultUnderlineColor']);
-  if (result.defaultHighlightColor) defaultHighlightColor = result.defaultHighlightColor;
-  if (result.defaultUnderlineColor) defaultUnderlineColor = result.defaultUnderlineColor;
-});
+  return {
+    highlightColor: result.defaultHighlightColor || 'yellow',
+    underlineColor: result.defaultUnderlineColor || 'yellow'
+  };
+}
 
 chrome.commands.onCommand.addListener(async (command) => {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.url || !(tab.url.includes('substack.com/p/') || tab.url.includes('substack.com/inbox/post/'))) return;
 
+  const defaults = await getStoredDefaults();
+
   if (command === 'highlight-selection') {
     await chrome.tabs.sendMessage(tab.id, {
       action: 'applyHighlight',
-      color: defaultHighlightColor
+      color: defaults.highlightColor
     });
   } else if (command === 'underline-selection') {
     await chrome.tabs.sendMessage(tab.id, {
       action: 'applyUnderline',
-      color: defaultUnderlineColor
+      color: defaults.underlineColor
     });
   } else if (command === 'reload-extension') {
     await chrome.tabs.reload(tab.id);
@@ -29,20 +30,15 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'getDefaults') {
-    sendResponse({ highlightColor: defaultHighlightColor, underlineColor: defaultUnderlineColor });
+    getStoredDefaults().then(sendResponse);
     return true;
   }
 
   if (message.action === 'setDefaults') {
-    if (message.highlightColor) {
-      defaultHighlightColor = message.highlightColor;
-      chrome.storage.local.set({ defaultHighlightColor });
-    }
-    if (message.underlineColor) {
-      defaultUnderlineColor = message.underlineColor;
-      chrome.storage.local.set({ defaultUnderlineColor });
-    }
-    sendResponse({ ok: true });
+    const updates = {};
+    if (message.highlightColor) updates.defaultHighlightColor = message.highlightColor;
+    if (message.underlineColor) updates.defaultUnderlineColor = message.underlineColor;
+    chrome.storage.local.set(updates).then(() => sendResponse({ ok: true }));
     return true;
   }
 

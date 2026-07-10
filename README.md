@@ -24,13 +24,15 @@ A Chrome extension to highlight and underline text on Substack articles. Highlig
 
 | Shortcut | Action |
 |----------|--------|
-| `Alt+H` | Highlight selected text |
-| `Alt+U` | Underline selected text |
-| `Ctrl+Shift+H` / `Cmd+Shift+H` | Highlight (fallback) |
-| `Ctrl+Shift+U` / `Cmd+Shift+U` | Underline (fallback) |
-| Click on a highlight | Remove it (with confirmation) |
+| `Alt+H` | Highlight selected text (page-level) |
+| `Alt+U` | Underline selected text (page-level) |
+| `Ctrl+Shift+H` / `Cmd+Shift+H` | Highlight (extension command) |
+| `Ctrl+Shift+U` / `Cmd+Shift+U` | Underline (extension command) |
+| `Ctrl+Z` (with cursor in a highlight) | Remove that highlight |
+| Toolbar ✕ / sidebar ✕ | Remove a highlight |
+| Double-click a restored highlight | Remove it |
 
-Change default colors from the extension popup.
+Change default colors from the extension popup. Removing a highlight does **not** show a confirmation prompt.
 
 ## Project Structure
 
@@ -53,7 +55,7 @@ Underlyne/
 - Highlights stored in `chrome.storage.local`, keyed by normalized URL
 - Automatically restores highlights when revisiting an article
 - MutationObserver handles Substack's SPA content loading
-- Highlights are clickable for removal with confirmation
+- Highlights can be removed via `Ctrl+Z`, the toolbar ✕, the sidebar ✕, or double-click (no confirmation prompt)
 
 ## Future Ideas
 
