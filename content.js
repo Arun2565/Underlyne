@@ -590,7 +590,17 @@
           del.addEventListener('click', e => {
             e.stopPropagation();
             const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-            if (span) removeSpan({ currentTarget: span });
+            if (span) {
+              removeSpan({ currentTarget: span });
+            } else {
+              const url = normalizeUrl(window.location.href);
+              chrome.storage.local.get(url, result => {
+                let highlights = result[url] || [];
+                highlights = highlights.filter(x => x.id !== h.id);
+                chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+              });
+              chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id: h.id });
+            }
           });
           item.addEventListener('click', () => {
             const span = document.querySelector(`[data-sh-id="${h.id}"]`);
