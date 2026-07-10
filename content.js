@@ -257,7 +257,8 @@
       startOffset: selectionData.startOffset,
       endXPath: selectionData.endXPath,
       endOffset: selectionData.endOffset,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      note: ''
     };
 
     try {
