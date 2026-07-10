@@ -177,11 +177,16 @@
     span.remove();
     const id = span.dataset.shId;
     const url = normalizeUrl(window.location.href);
-    chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
-    chrome.storage.local.get(url, result => {
-      let highlights = result[url] || [];
-      highlights = highlights.filter(h => h.id !== id);
-      chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+    chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id }, () => {
+      if (chrome.runtime.lastError) {
+        chrome.storage.local.get(url, result => {
+          let highlights = result[url] || [];
+          highlights = highlights.filter(h => h.id !== id);
+          chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+        });
+      } else {
+        refreshSidebar();
+      }
     });
   }
 
