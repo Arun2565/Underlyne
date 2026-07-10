@@ -177,16 +177,18 @@
     span.remove();
     const id = span.dataset.shId;
     const url = normalizeUrl(window.location.href);
-    chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id }, () => {
-      if (chrome.runtime.lastError) {
-        chrome.storage.local.get(url, result => {
-          let highlights = result[url] || [];
-          highlights = highlights.filter(h => h.id !== id);
-          chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
-        });
-      } else {
+    console.log('[Underlyne] Deleting highlight id=' + id + ' url=' + url);
+    chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
+    chrome.storage.local.get(url, result => {
+      let before = (result[url] || []).length;
+      let highlights = result[url] || [];
+      highlights = highlights.filter(h => h.id !== id);
+      let after = highlights.length;
+      console.log('[Underlyne] Storage update: ' + before + ' -> ' + after + ' highlights');
+      chrome.storage.local.set({ [url]: highlights }, () => {
+        console.log('[Underlyne] Storage write complete, refreshing sidebar');
         refreshSidebar();
-      }
+      });
     });
   }
 
