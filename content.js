@@ -11,10 +11,6 @@
     }
   }
 
-  function isArticlePage() {
-    return /\/p\/|\/pub\/|%2Fp%2F/.test(window.location.pathname + window.location.search);
-  }
-
   function getHighlightClasses(color) {
     return `sh-highlight sh-${color}`;
   }
@@ -196,7 +192,6 @@
 
   function setupAnnotationLayout() {
     try { guard(); } catch { return; }
-    if (!isArticlePage()) return;
     if (document.getElementById('sh-annotation-panel')) return;
     const container = getArticleContainer();
     if (!container || container === document.body) return;
@@ -311,7 +306,6 @@
 
   function applyStyleToSelection(type, color) {
     try { guard(); } catch { return; }
-    if (!isArticlePage()) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed) return;
 
