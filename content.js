@@ -86,7 +86,13 @@
         path = `/${current.tagName.toLowerCase()}[${index}]` + path;
         current = current.parentNode;
       }
-      return `/html/body${path}/text()[1]`;
+      let textIndex = 1;
+      let textSibling = node.previousSibling;
+      while (textSibling) {
+        if (textSibling.nodeType === Node.TEXT_NODE) textIndex++;
+        textSibling = textSibling.previousSibling;
+      }
+      return `/html/body${path}/text()[${textIndex}]`;
     }
 
     if (node.nodeType === Node.ELEMENT_NODE) {
@@ -336,6 +342,40 @@
     return null;
   }
 
+  function findTextRangeByContent(text, container) {
+    const treeWalker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, null, false);
+    const nodes = [];
+    let content = '';
+    let node;
+    while ((node = treeWalker.nextNode())) {
+      nodes.push({ node, start: content.length, end: content.length + node.textContent.length });
+      content += node.textContent;
+    }
+    const start = content.indexOf(text);
+    if (start === -1) return null;
+    const end = start + text.length;
+    const startEntry = nodes.find(entry => start >= entry.start && start <= entry.end);
+    const endEntry = nodes.find(entry => end >= entry.start && end <= entry.end);
+    if (!startEntry || !endEntry) return null;
+    const range = document.createRange();
+    range.setStart(startEntry.node, start - startEntry.start);
+    range.setEnd(endEntry.node, end - endEntry.start);
+    return range;
+  }
+
+  function applyHighlightByTextContent(data) {
+    const range = findTextRangeByContent(data.text, getArticleContainer() || document.body);
+    if (!range) return false;
+    const span = document.createElement('span');
+    span.className = data.type === 'underline' ? getUnderlineClass(data.color) : getHighlightClasses(data.color);
+    span.dataset.shId = data.id;
+    span.dataset.shType = data.type || 'highlight';
+    span.dataset.shColor = data.color;
+    span.addEventListener('dblclick', removeSpan);
+    wrapRangeInSpan(range, span);
+    return true;
+  }
+
   function applyHighlightFromData(data) {
     const existingById = document.querySelector(`[data-sh-id="${data.id}"]`);
     if (existingById) {
@@ -354,29 +394,15 @@
     let startNode = resolveXPath(data.startXPath);
     let endNode = resolveXPath(data.endXPath);
 
-    if (!startNode || !endNode) {
-      const container = getArticleContainer();
-      const found = findTextByContent(data.text, container || document.body);
-      if (found) {
-        const range = document.createRange();
-        range.setStart(found.node, found.offset);
-        range.setEnd(found.node, found.offset + data.text.length);
-        const span = document.createElement('span');
-        span.className = data.type === 'underline' ? getUnderlineClass(data.color) : getHighlightClasses(data.color);
-        span.dataset.shId = data.id;
-        span.dataset.shType = data.type || 'highlight';
-        span.dataset.shColor = data.color;
-        span.addEventListener('dblclick', removeSpan);
-        wrapRangeInSpan(range, span);
-        return true;
-      }
-      return false;
-    }
+    if (!startNode || !endNode) return applyHighlightByTextContent(data);
 
     try {
       const range = document.createRange();
       range.setStart(startNode, data.startOffset);
       range.setEnd(endNode, data.endOffset);
+      if (normalizeAnnotationText(range.toString()) !== normalizeAnnotationText(data.text)) {
+        return applyHighlightByTextContent(data);
+      }
 
       const existingSpan = range.startContainer?.parentElement?.closest?.('[data-sh-id]') ||
         (range.startContainer?.dataset?.shId ? range.startContainer : null);
@@ -410,7 +436,7 @@
       wrapRangeInSpan(range, span);
       return true;
     } catch {
-      return false;
+      return applyHighlightByTextContent(data);
     }
   }
 
@@ -694,21 +720,33 @@
         return m.data;
       });
 
+      const visibleAnnotations = deduped
+        .map(h => {
+          let span = document.querySelector(`[data-sh-id="${h.id}"]`);
+          if (!span) {
+            try { applyHighlightFromData(h); } catch {}
+            span = document.querySelector(`[data-sh-id="${h.id}"]`);
+          }
+          return { h, span };
+        })
+        .filter(({ span }) => !!span);
       const domOrder = new Map(
         Array.from(document.querySelectorAll('[data-sh-id]')).map((span, index) => [span.dataset.shId, index])
       );
-      const ordered = deduped
-        .map(h => ({ h, span: document.querySelector(`[data-sh-id="${h.id}"]`) }))
-        .sort((a, b) => {
+      const ordered = visibleAnnotations.sort((a, b) => {
           const aIndex = domOrder.get(a.h.id);
           const bIndex = domOrder.get(b.h.id);
           if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
           if (aIndex !== undefined) return -1;
           if (bIndex !== undefined) return 1;
           return (a.h.timestamp || 0) - (b.h.timestamp || 0);
-        });
+      });
 
       list.innerHTML = '';
+      if (ordered.length === 0) {
+        list.innerHTML = '<div class="sh-sidebar-empty">No annotations found in this article.</div>';
+        return;
+      }
       let previousSection = null;
       for (const { h, span } of ordered) {
         const section = span ? getSectionHeading(span) : null;
