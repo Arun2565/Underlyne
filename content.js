@@ -977,8 +977,17 @@ const urlObserver = new MutationObserver(() => {
   }, 2000);
   setTimeout(() => clearInterval(restoreInterval), 20000);
 
-  const highlightObserver = new MutationObserver(() => {
+  const highlightObserver = new MutationObserver(mutations => {
     try { guard(); } catch { highlightObserver.disconnect(); return; }
+    // Rendering the sidebar changes the DOM too. Ignore those mutations so a
+    // refresh does not immediately rebuild the list again and swallow clicks.
+    const articleChanged = mutations.some(mutation => {
+      const target = mutation.target.nodeType === Node.ELEMENT_NODE
+        ? mutation.target
+        : mutation.target.parentElement;
+      return !target?.closest?.('#sh-sidebar');
+    });
+    if (!articleChanged) return;
     refreshSidebar();
   });
   highlightObserver.observe(document.body, { childList: true, subtree: true });
