@@ -125,25 +125,13 @@
   background: #4a4a7a;
 }
 
-/* ===== Grid Layout (article + annotation panel) ===== */
-#sh-grid-wrapper {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 24px;
-  align-items: stretch;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 20px;
-}
-
-#sh-article-col {
-  min-width: 0;
-}
-
 /* ===== Annotation Panel ===== */
 #sh-annotation-panel {
-  position: relative;
-  min-height: 100%;
+  position: absolute;
+  top: 0;
+  left: calc(100% + 24px);
+  width: 280px;
+  min-height: 100px;
   padding: 16px 0;
   border-left: 1px solid #e6e6e6;
   padding-left: 16px;

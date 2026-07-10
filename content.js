@@ -52,18 +52,7 @@
       const el = document.querySelector(sel);
       if (el && el.textContent.trim().length > 50) return el;
     }
-    // fallback: find the element with the most text content (exclude body/html)
-    const candidates = document.querySelectorAll('div, article, main, section');
-    let best = null;
-    let maxLen = 0;
-    for (const el of candidates) {
-      const len = el.textContent.trim().length;
-      if (len > maxLen && len > 100 && el.tagName !== 'BODY' && el.tagName !== 'HTML') {
-        maxLen = len;
-        best = el;
-      }
-    }
-    return best || document.body;
+    return document.body;
   }
 
   function findTextNode(node, offset) {
@@ -199,32 +188,24 @@
     });
   }
 
+  let _articleContainer = null;
+
   function setupAnnotationLayout() {
     try { guard(); } catch { return; }
-    let wrapper = document.getElementById('sh-grid-wrapper');
-    let articleCol = document.getElementById('sh-article-col');
-    let panel = document.getElementById('sh-annotation-panel');
+    if (document.getElementById('sh-annotation-panel')) return;
     const container = getArticleContainer();
     if (!container || container === document.body) return;
-    if (wrapper && articleCol && articleCol.contains(container)) return;
-    if (wrapper) wrapper.remove();
-    wrapper = document.createElement('div');
-    wrapper.id = 'sh-grid-wrapper';
-    articleCol = document.createElement('div');
-    articleCol.id = 'sh-article-col';
-    panel = document.createElement('div');
+    const panel = document.createElement('div');
     panel.id = 'sh-annotation-panel';
     panel.innerHTML = '<div class="sh-ae-empty">No highlights yet</div>';
-    container.parentNode.insertBefore(wrapper, container);
-    wrapper.appendChild(articleCol);
-    wrapper.appendChild(panel);
-    articleCol.appendChild(container);
+    container.style.position = 'relative';
+    container.appendChild(panel);
+    _articleContainer = container;
   }
 
   function getSpanOffset(span) {
-    const articleCol = document.getElementById('sh-article-col');
-    if (!articleCol) return 0;
-    const colRect = articleCol.getBoundingClientRect();
+    if (!_articleContainer) return 0;
+    const colRect = _articleContainer.getBoundingClientRect();
     const spanRect = span.getBoundingClientRect();
     return spanRect.top - colRect.top;
   }
@@ -756,20 +737,19 @@
     setTimeout(tryRestore, 300);
   }
 
-let lastUrl = window.location.href;
-const urlObserver = new MutationObserver(() => {
-    try { guard(); } catch { urlObserver.disconnect(); return; }
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      scheduleRestore();
-    }
-  });
-  urlObserver.observe(document, { subtree: true, childList: true });
-
   window.addEventListener('popstate', () => {
     try { guard(); } catch { return; }
     scheduleRestore();
   });
+
+  let lastUrl = window.location.href;
+  const navCheckInterval = setInterval(() => {
+    try { guard(); } catch { clearInterval(navCheckInterval); return; }
+    if (window.location.href !== lastUrl) {
+      lastUrl = window.location.href;
+      scheduleRestore();
+    }
+  }, 2000);
 
   const restoreInterval = setInterval(() => {
     try { guard(); } catch { clearInterval(restoreInterval); return; }
@@ -786,11 +766,11 @@ const urlObserver = new MutationObserver(() => {
         }
       }
     });
-  }, 2000);
-  setTimeout(() => clearInterval(restoreInterval), 20000);
+  }, 3000);
+  setTimeout(() => clearInterval(restoreInterval), 12000);
 
   window.addEventListener('unload', () => {
+    clearInterval(navCheckInterval);
     clearInterval(restoreInterval);
-    urlObserver.disconnect();
   });
 })();
