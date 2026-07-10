@@ -500,6 +500,34 @@
     sidebar.id = 'sh-sidebar';
     sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><button id="sh-sidebar-close">✕</button></div><div id="sh-sidebar-list"></div>';
     sidebar.querySelector('#sh-sidebar-close').addEventListener('click', hideSidebar);
+    sidebar.querySelector('#sh-sidebar-list').addEventListener('click', e => {
+      const item = e.target.closest('.sh-sidebar-item');
+      if (!item) return;
+      const id = item.dataset.shId;
+      if (!id) return;
+      if (e.target.closest('.sh-sidebar-del')) {
+        const span = document.querySelector(`[data-sh-id="${id}"]`);
+        if (span) {
+          removeSpan({ currentTarget: span });
+        } else {
+          const url = normalizeUrl(window.location.href);
+          chrome.storage.local.get(url, result => {
+            let highlights = result[url] || [];
+            highlights = highlights.filter(h => h.id !== id);
+            chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
+          });
+          chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
+        }
+      } else {
+        const span = document.querySelector(`[data-sh-id="${id}"]`);
+        if (span) {
+          span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          span.style.outline = '2px solid #0284c7';
+          span.style.borderRadius = '2px';
+          setTimeout(() => span.style.outline = '', 1500);
+        }
+      }
+    });
     document.body.appendChild(sidebar);
   }
 
@@ -570,6 +598,7 @@
         for (const h of group.items) {
           const item = document.createElement('div');
           item.className = 'sh-sidebar-item';
+          item.dataset.shId = h.id;
           const bar = document.createElement('div');
           bar.className = `sh-sidebar-bar sh-bar-${h.color}`;
           const body = document.createElement('div');
@@ -587,30 +616,6 @@
           const del = document.createElement('button');
           del.className = 'sh-sidebar-del';
           del.textContent = '✕';
-          del.addEventListener('click', e => {
-            e.stopPropagation();
-            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-            if (span) {
-              removeSpan({ currentTarget: span });
-            } else {
-              const url = normalizeUrl(window.location.href);
-              chrome.storage.local.get(url, result => {
-                let highlights = result[url] || [];
-                highlights = highlights.filter(x => x.id !== h.id);
-                chrome.storage.local.set({ [url]: highlights }, () => refreshSidebar());
-              });
-              chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id: h.id });
-            }
-          });
-          item.addEventListener('click', () => {
-            const span = document.querySelector(`[data-sh-id="${h.id}"]`);
-            if (span) {
-              span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              span.style.outline = '2px solid #0284c7';
-              span.style.borderRadius = '2px';
-              setTimeout(() => span.style.outline = '', 1500);
-            }
-          });
           body.appendChild(meta);
           body.appendChild(text);
           item.appendChild(bar);
