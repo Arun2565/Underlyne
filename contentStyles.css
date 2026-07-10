@@ -220,6 +220,13 @@
 .sh-sidebar-item:hover {
   background: #fafafa;
 }
+.sh-sidebar-item:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: -2px;
+}
+.sh-sidebar-item.is-active {
+  background: #f0f9ff;
+}
 .sh-sidebar-bar {
   width: 4px;
   flex-shrink: 0;
@@ -263,4 +270,14 @@
 }
 .sh-sidebar-del:hover {
   color: #c62828;
+}
+.sh-annotation-focus {
+  outline: 2px solid #0284c7 !important;
+  outline-offset: 2px;
+  border-radius: 2px;
+  animation: sh-annotation-pulse 1.6s ease-out;
+}
+@keyframes sh-annotation-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.45); }
+  100% { box-shadow: 0 0 0 10px rgba(2, 132, 199, 0); }
 }

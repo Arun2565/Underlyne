@@ -501,7 +501,8 @@
     sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><div id="sh-sidebar-actions"><button id="sh-sidebar-export" type="button" title="Export annotations as Markdown" aria-label="Export annotations as Markdown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg></button><button id="sh-sidebar-close" type="button" title="Close annotations" aria-label="Close annotations">✕</button></div></div><div id="sh-sidebar-list"></div>';
     sidebar.querySelector('#sh-sidebar-close').addEventListener('click', hideSidebar);
     sidebar.querySelector('#sh-sidebar-export').addEventListener('click', exportAnnotationsAsMarkdown);
-    sidebar.querySelector('#sh-sidebar-list').addEventListener('click', e => {
+    const sidebarList = sidebar.querySelector('#sh-sidebar-list');
+    sidebarList.addEventListener('click', e => {
       const item = e.target.closest('.sh-sidebar-item');
       if (!item) return;
       const id = item.dataset.shId;
@@ -519,15 +520,14 @@
           });
           chrome.runtime.sendMessage({ action: 'deleteHighlight', url, id });
         }
-      } else {
-        const span = document.querySelector(`[data-sh-id="${id}"]`);
-        if (span) {
-          span.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          span.style.outline = '2px solid #0284c7';
-          span.style.borderRadius = '2px';
-          setTimeout(() => span.style.outline = '', 1500);
-        }
-      }
+      } else focusAnnotation(item);
+    });
+    sidebarList.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const item = e.target.closest('.sh-sidebar-item');
+      if (!item) return;
+      e.preventDefault();
+      focusAnnotation(item);
     });
     document.body.appendChild(sidebar);
   }
@@ -580,12 +580,30 @@
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `underlyne-annotations-${Date.now()}.md`;
+      const articleName = (document.title || 'underlyne-annotations')
+        .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 120) || 'underlyne-annotations';
+      link.download = `${articleName}.md`;
       document.body.appendChild(link);
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
     });
+  }
+
+  function focusAnnotation(item) {
+    const id = item.dataset.shId;
+    const span = document.querySelector(`[data-sh-id="${id}"]`);
+    if (!span) return;
+    document.querySelectorAll('.sh-sidebar-item.is-active').forEach(entry => entry.classList.remove('is-active'));
+    item.classList.add('is-active');
+    span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    span.classList.remove('sh-annotation-focus');
+    void span.offsetWidth;
+    span.classList.add('sh-annotation-focus');
+    setTimeout(() => span.classList.remove('sh-annotation-focus'), 1600);
   }
 
   function getSectionHeading(el) {
@@ -629,57 +647,62 @@
         return m.data;
       });
 
+      const domOrder = new Map(
+        Array.from(document.querySelectorAll('[data-sh-id]')).map((span, index) => [span.dataset.shId, index])
+      );
+      const ordered = deduped
+        .map(h => ({ h, span: document.querySelector(`[data-sh-id="${h.id}"]`) }))
+        .sort((a, b) => {
+          const aIndex = domOrder.get(a.h.id);
+          const bIndex = domOrder.get(b.h.id);
+          if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+          if (aIndex !== undefined) return -1;
+          if (bIndex !== undefined) return 1;
+          return (a.h.timestamp || 0) - (b.h.timestamp || 0);
+        });
+
       list.innerHTML = '';
-      const grouped = {};
-      for (const h of deduped) {
-        const span = document.querySelector(`[data-sh-id="${h.id}"]`);
+      let previousSection = null;
+      for (const { h, span } of ordered) {
         const section = span ? getSectionHeading(span) : null;
-        const key = section || '__no_section';
-        if (!grouped[key]) grouped[key] = { heading: section, items: [] };
-        grouped[key].items.push(h);
-      }
-      const sectionOrder = Object.keys(grouped).sort((a, b) => {
-        const aMin = Math.min(...grouped[a].items.map(i => i.startOffset));
-        const bMin = Math.min(...grouped[b].items.map(i => i.startOffset));
-        return aMin - bMin;
-      });
-      for (const key of sectionOrder) {
-        const group = grouped[key];
-        group.items.sort((x, y) => x.startOffset - y.startOffset);
-        if (group.heading) {
+        if (section && section !== previousSection) {
           const head = document.createElement('div');
           head.className = 'sh-sidebar-section';
-          head.textContent = group.heading;
+          head.textContent = section;
           list.appendChild(head);
         }
-        for (const h of group.items) {
-          const item = document.createElement('div');
-          item.className = 'sh-sidebar-item';
-          item.dataset.shId = h.id;
-          const bar = document.createElement('div');
-          bar.className = `sh-sidebar-bar sh-bar-${h.color}`;
-          const body = document.createElement('div');
-          body.className = 'sh-sidebar-body';
-          const meta = document.createElement('div');
-          meta.className = 'sh-sidebar-meta';
-          if (h.type === 'both') {
-            meta.textContent = 'Highlight + Underline';
-          } else {
-            meta.textContent = h.type === 'underline' ? 'Underline' : 'Highlight';
-          }
-          const text = document.createElement('div');
-          text.className = 'sh-sidebar-text';
-          text.textContent = h.text;
-          const del = document.createElement('button');
-          del.className = 'sh-sidebar-del';
-          del.textContent = '✕';
-          body.appendChild(meta);
-          body.appendChild(text);
-          item.appendChild(bar);
-          item.appendChild(body);
-          item.appendChild(del);
-          list.appendChild(item);
+        previousSection = section;
+        const item = document.createElement('div');
+        item.className = 'sh-sidebar-item';
+        item.dataset.shId = h.id;
+        item.tabIndex = 0;
+        item.setAttribute('role', 'button');
+        item.setAttribute('aria-label', `Jump to annotation: ${h.text}`);
+        const bar = document.createElement('div');
+        bar.className = `sh-sidebar-bar sh-bar-${h.color}`;
+        const body = document.createElement('div');
+        body.className = 'sh-sidebar-body';
+        const meta = document.createElement('div');
+        meta.className = 'sh-sidebar-meta';
+        if (h.type === 'both') {
+          meta.textContent = 'Highlight + Underline';
+        } else {
+          meta.textContent = h.type === 'underline' ? 'Underline' : 'Highlight';
         }
+        const text = document.createElement('div');
+        text.className = 'sh-sidebar-text';
+        text.textContent = h.text;
+        const del = document.createElement('button');
+        del.className = 'sh-sidebar-del';
+        del.textContent = '✕';
+        del.title = 'Delete annotation';
+        del.setAttribute('aria-label', 'Delete annotation');
+        body.appendChild(meta);
+        body.appendChild(text);
+        item.appendChild(bar);
+        item.appendChild(body);
+        item.appendChild(del);
+        list.appendChild(item);
       }
     });
   }
