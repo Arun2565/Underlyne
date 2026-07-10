@@ -158,6 +158,34 @@
     chrome.storage.local.set({ [url]: highlights });
   }
 
+  function normalizeAnnotationText(text) {
+    return (text || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+  }
+
+  function deduplicateAnnotations(highlights) {
+    const newestByAnnotation = new Map();
+    for (const annotation of highlights) {
+      const key = `${annotation.type || 'highlight'}|${normalizeAnnotationText(annotation.text)}`;
+      const existing = newestByAnnotation.get(key);
+      if (!existing || (annotation.timestamp || 0) >= (existing.timestamp || 0)) newestByAnnotation.set(key, annotation);
+    }
+    return Array.from(newestByAnnotation.values());
+  }
+
+  function removeDuplicateSpans(keepId, text, type) {
+    const normalizedText = normalizeAnnotationText(text);
+    document.querySelectorAll('[data-sh-id]').forEach(existing => {
+      if (existing.dataset.shId === keepId || normalizeAnnotationText(existing.textContent) !== normalizedText) return;
+      const isSameType = type === 'highlight'
+        ? existing.classList.contains('sh-highlight')
+        : existing.classList.contains('sh-underline');
+      if (!isSameType || !existing.parentNode) return;
+      const parent = existing.parentNode;
+      while (existing.firstChild) parent.insertBefore(existing.firstChild, existing);
+      existing.remove();
+    });
+  }
+
   async function getStoredHighlights(url) {
     try { guard(); } catch { return []; }
     return new Promise(resolve => {
@@ -259,6 +287,7 @@
       endOffset: selectionData.endOffset,
       timestamp: Date.now()
     };
+    removeDuplicateSpans(highlightData.id, highlightData.text, highlightData.type);
 
     try {
       chrome.runtime.sendMessage({
@@ -270,7 +299,10 @@
       console.error('[Underlyne] sendMessage persistence failed, trying direct storage:', e);
       try {
         chrome.storage.local.get(url, result => {
-          const stored = result[url] || [];
+          const stored = (result[url] || []).filter(item =>
+            normalizeAnnotationText(item.text) !== normalizeAnnotationText(highlightData.text) ||
+            (item.type || 'highlight') !== (highlightData.type || 'highlight')
+          );
           stored.push(highlightData);
           chrome.storage.local.set({ [url]: stored });
         });
@@ -595,11 +627,22 @@
 
   function focusAnnotation(item) {
     const id = item.dataset.shId;
-    const span = document.querySelector(`[data-sh-id="${id}"]`);
-    if (!span) return;
+    let span = document.querySelector(`[data-sh-id="${id}"]`);
+    const annotation = item._annotationData;
+    if (!span && annotation) {
+      try { applyHighlightFromData(annotation); } catch {}
+      span = document.querySelector(`[data-sh-id="${id}"]`);
+    }
+    let target = span;
+    if (!target && annotation?.startXPath) {
+      const node = resolveXPath(annotation.startXPath);
+      target = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    }
+    if (!target) return;
     document.querySelectorAll('.sh-sidebar-item.is-active').forEach(entry => entry.classList.remove('is-active'));
     item.classList.add('is-active');
-    span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!span) return;
     span.classList.remove('sh-annotation-focus');
     void span.offsetWidth;
     span.classList.add('sh-annotation-focus');
@@ -626,14 +669,18 @@
     const url = normalizeUrl(window.location.href);
     chrome.storage.local.get(url, result => {
       const highlights = result[url] || [];
+      const uniqueHighlights = deduplicateAnnotations(highlights);
+      if (uniqueHighlights.length !== highlights.length) {
+        chrome.storage.local.set({ [url]: uniqueHighlights });
+      }
       const list = document.getElementById('sh-sidebar-list');
       if (!list) return;
-      if (highlights.length === 0) {
+      if (uniqueHighlights.length === 0) {
         list.innerHTML = '<div class="sh-sidebar-empty">No highlights yet</div>';
         return;
       }
       const merged = {};
-      for (const h of highlights) {
+      for (const h of uniqueHighlights) {
         const key = h.text + '|' + h.startOffset + '|' + h.endOffset;
         if (!merged[key]) merged[key] = { types: {}, data: h };
         merged[key].types[h.type] = h.color;
@@ -675,6 +722,7 @@
         const item = document.createElement('div');
         item.className = 'sh-sidebar-item';
         item.dataset.shId = h.id;
+        item._annotationData = h;
         item.tabIndex = 0;
         item.setAttribute('role', 'button');
         item.setAttribute('aria-label', `Jump to annotation: ${h.text}`);

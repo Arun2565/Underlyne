@@ -73,7 +73,11 @@ async function getHighlightsForUrl(url) {
 async function saveHighlight(url, highlight) {
   const normalizedUrl = normalizeUrl(url);
   const result = await chrome.storage.local.get(normalizedUrl);
-  const highlights = result[normalizedUrl] || [];
+  const annotationText = normalizeAnnotationText(highlight.text);
+  const annotationType = highlight.type || 'highlight';
+  const highlights = (result[normalizedUrl] || []).filter(item =>
+    normalizeAnnotationText(item.text) !== annotationText || (item.type || 'highlight') !== annotationType
+  );
   highlights.push(highlight);
   await chrome.storage.local.set({ [normalizedUrl]: highlights });
 }
@@ -98,4 +102,8 @@ function normalizeUrl(url) {
   } catch {
     return url;
   }
+}
+
+function normalizeAnnotationText(text) {
+  return (text || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
 }
