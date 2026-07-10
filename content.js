@@ -257,8 +257,7 @@
       startOffset: selectionData.startOffset,
       endXPath: selectionData.endXPath,
       endOffset: selectionData.endOffset,
-      timestamp: Date.now(),
-      note: ''
+      timestamp: Date.now()
     };
 
     try {
@@ -768,6 +767,11 @@
         };
       });
       sendResponse({ annotations, articleTitle: document.title, url: window.location.href });
+      return true;
+    } else if (message.action === 'getHighlightsOrder') {
+      const spans = document.querySelectorAll('[data-sh-id]');
+      const order = Array.from(spans).map(span => span.dataset.shId);
+      sendResponse({ order });
       return true;
     }
   });

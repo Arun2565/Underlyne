@@ -62,10 +62,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.action === 'updateHighlightNote') {
-    updateHighlightNote(message.url, message.id, message.note).then(() => sendResponse({ ok: true }));
-    return true;
-  }
 });
 
 async function getHighlightsForUrl(url) {
@@ -88,17 +84,6 @@ async function deleteHighlightById(url, id) {
   let highlights = result[normalizedUrl] || [];
   highlights = highlights.filter(h => h.id !== id);
   await chrome.storage.local.set({ [normalizedUrl]: highlights });
-}
-
-async function updateHighlightNote(url, id, note) {
-  const normalizedUrl = normalizeUrl(url);
-  const result = await chrome.storage.local.get(normalizedUrl);
-  let highlights = result[normalizedUrl] || [];
-  const idx = highlights.findIndex(h => h.id === id);
-  if (idx !== -1) {
-    highlights[idx] = { ...highlights[idx], note };
-    await chrome.storage.local.set({ [normalizedUrl]: highlights });
-  }
 }
 
 async function clearAllForUrl(url) {
