@@ -8,8 +8,8 @@ A Chrome extension to highlight and underline text on Substack articles. Highlig
 - **Underline** text with 5 colors (Alt+U)
 - Floating toolbar appears on text selection for quick access
 - Highlights persist across page reloads and browser restarts
-- View, manage, and delete highlights from the popup
-- Export/import highlights as JSON
+- View and delete annotations from the in-page sidebar
+- Export the current article's annotations as Markdown from the sidebar
 - Works on any Substack article page (`*.substack.com/p/*`)
 
 ## Installation (Developer Mode)
@@ -32,7 +32,7 @@ A Chrome extension to highlight and underline text on Substack articles. Highlig
 | Toolbar ✕ / sidebar ✕ | Remove a highlight |
 | Double-click a restored highlight | Remove it |
 
-Change default colors from the extension popup. Removing a highlight does **not** show a confirmation prompt.
+Open the annotation sidebar from the floating toolbar's list icon. Use its download icon to export annotations as Markdown. Removing a highlight does **not** show a confirmation prompt.
 
 ## Project Structure
 
@@ -42,9 +42,6 @@ Underlyne/
 ├── background.js         # Service worker — storage, message routing
 ├── content.js            # Injected script — selection, XPath, restoration
 ├── contentStyles.css     # Highlight/underline styles + floating toolbar
-├── popup.html            # Popup interface
-├── popup.js              # Popup logic
-├── popup.css             # Popup styles
 ├── icons/                # Extension icons
 └── README.md
 ```

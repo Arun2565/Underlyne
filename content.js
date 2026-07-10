@@ -498,8 +498,9 @@
     if (document.getElementById('sh-sidebar')) return;
     const sidebar = document.createElement('div');
     sidebar.id = 'sh-sidebar';
-    sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><button id="sh-sidebar-close">✕</button></div><div id="sh-sidebar-list"></div>';
+    sidebar.innerHTML = '<div id="sh-sidebar-header"><span id="sh-sidebar-title">Underlyne</span><div id="sh-sidebar-actions"><button id="sh-sidebar-export" type="button" title="Export annotations as Markdown" aria-label="Export annotations as Markdown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg></button><button id="sh-sidebar-close" type="button" title="Close annotations" aria-label="Close annotations">✕</button></div></div><div id="sh-sidebar-list"></div>';
     sidebar.querySelector('#sh-sidebar-close').addEventListener('click', hideSidebar);
+    sidebar.querySelector('#sh-sidebar-export').addEventListener('click', exportAnnotationsAsMarkdown);
     sidebar.querySelector('#sh-sidebar-list').addEventListener('click', e => {
       const item = e.target.closest('.sh-sidebar-item');
       if (!item) return;
@@ -529,6 +530,62 @@
       }
     });
     document.body.appendChild(sidebar);
+  }
+
+  function exportAnnotationsAsMarkdown() {
+    try { guard(); } catch { return; }
+    const url = normalizeUrl(window.location.href);
+    chrome.storage.local.get(url, result => {
+      const highlights = result[url] || [];
+      if (highlights.length === 0) {
+        const button = document.getElementById('sh-sidebar-export');
+        if (button) {
+          const originalTitle = button.title;
+          button.title = 'No annotations to export';
+          setTimeout(() => { button.title = originalTitle; }, 2000);
+        }
+        return;
+      }
+
+      const order = Array.from(document.querySelectorAll('[data-sh-id]')).map(span => span.dataset.shId);
+      const orderMap = new Map(order.map((id, index) => [id, index]));
+      const orderedHighlights = [...highlights].sort((a, b) => {
+        const aIndex = orderMap.get(a.id);
+        const bIndex = orderMap.get(b.id);
+        if (aIndex !== undefined && bIndex !== undefined) return aIndex - bIndex;
+        if (aIndex !== undefined) return -1;
+        if (bIndex !== undefined) return 1;
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      });
+      const typeLabels = { highlight: 'Highlight', underline: 'Underline' };
+      const colorLabels = { yellow: 'Yellow', green: 'Green', blue: 'Blue', red: 'Red', purple: 'Purple' };
+      const lines = [
+        `# ${document.title || 'Underlyne Annotations'}`,
+        '',
+        `Source: ${window.location.href}`,
+        `Exported: ${new Date().toLocaleString()}`,
+        '',
+        '## Annotations',
+        ''
+      ];
+      for (const annotation of orderedHighlights) {
+        const text = (annotation.text || '').replace(/\n+/g, ' ').trim();
+        const type = typeLabels[annotation.type] || annotation.type || 'Annotation';
+        const color = colorLabels[annotation.color] || annotation.color || 'Yellow';
+        lines.push(`- **“${text}”** — ${type} (${color})`);
+      }
+      lines.push('', '---', `*${orderedHighlights.length} annotation${orderedHighlights.length === 1 ? '' : 's'}*`);
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = `underlyne-annotations-${Date.now()}.md`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    });
   }
 
   function getSectionHeading(el) {

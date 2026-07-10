@@ -34,7 +34,6 @@
     }
   },
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Underlyne",
     "default_icon": {
       "16": "icons/icon16.png",
